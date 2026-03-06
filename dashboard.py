@@ -462,7 +462,8 @@ with main_tab:
 
         tabs = st.tabs(["Description", "Cover Letter", "Resume"])
         with tabs[0]:
-            st.text(job.get("description", "No description available") or "No description available")
+            desc = job.get("description") or ""
+            st.text(desc if desc and desc.lower() != "nan" else "No description available")
         with tabs[1]:
             cover = job.get("cover_letter", "")
             if cover:
