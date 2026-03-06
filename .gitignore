@@ -1,0 +1,13 @@
+# NEVER push these to GitHub
+.env
+*.db
+*.sqlite
+jobs.db
+
+# Temp files
+.last_scraped
+.scrape_in_progress
+__pycache__/
+*.pyc
+.playwright/
+playwright-report/
