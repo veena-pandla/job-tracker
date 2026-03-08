@@ -424,7 +424,19 @@ with main_tab:
         if val == "Reply":     return "color: #92400e; font-weight: bold"
         return "color: #9ca3af"
 
+    def highlight_row(row):
+        """Color entire row based on job status so it's instantly visible."""
+        status = row.get("status", "") if hasattr(row, "get") else ""
+        row_len = len(row)
+        if status == "offer":        return ["background-color: #bbf7d0"] * row_len  # green
+        if status == "interviewing": return ["background-color: #bfdbfe"] * row_len  # blue
+        if status == "applied":      return ["background-color: #fef9c3"] * row_len  # yellow
+        if status == "reviewed":     return ["background-color: #f3e8ff"] * row_len  # lavender
+        if status == "rejected":     return ["background-color: #ffe4e6"] * row_len  # pink/red
+        return [""] * row_len
+
     styled = df_display.style\
+        .apply(highlight_row, axis=1)\
         .map(color_score,      subset=["score"])\
         .map(color_h1b,        subset=["h1b"])\
         .map(color_apply_type, subset=["apply_type"])\
