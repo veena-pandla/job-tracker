@@ -569,7 +569,7 @@ with main_tab:
             cur_idx = statuses.index(job.get("status", "new")) if job.get("status") in statuses else 0
             new_status = st.selectbox("New status", statuses,
                                       index=cur_idx,
-                                      key="status_select")
+                                      key=f"status_select_{job['id']}")
             notes = st.text_input("Notes", value=job.get("notes", "") or "")
             if st.button("Save Status"):
                 update_status(job["id"], new_status, notes)
