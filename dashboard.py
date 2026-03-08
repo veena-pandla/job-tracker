@@ -344,6 +344,43 @@ with st.sidebar:
                 st.write(f"{icon} **{j.get('company')}** — {j.get('title')} | {r.get('notes', '')}")
             st.rerun()
 
+    st.divider()
+    with st.expander("📋 Changelog", expanded=False):
+        st.markdown("""
+**v1.7** — Mar 2026
+- 🔧 Fixed false-positive interview detections from emails
+- 🎨 Color legend added above job board table
+
+**v1.6** — Mar 2026
+- 🔄 "Refresh Jobs Now" button in sidebar
+- ⏱ Auto-scrape reduced to every 30 min
+
+**v1.5** — Mar 2026
+- 📧 Auto Gmail check every hour in background
+- 🔗 LinkedIn application confirmation emails auto-mark as Applied
+- 🚫 Improved rejection email detection (indirect language)
+
+**v1.4** — Mar 2026
+- 🎨 Row color highlighting by status in job board
+- ✅ "Mark as Applied" now sets applied date correctly
+- 👁 Jobs auto-marked as Reviewed when opened
+
+**v1.3** — Mar 2026
+- 🤖 Auto Apply button for LinkedIn Easy Apply jobs
+- 🏷 Accurate Easy Apply vs External Site detection
+
+**v1.2** — Mar 2026
+- 📬 Gmail inbox scanner for job responses
+- 🕐 Jobs stay visible after 8 hours if reviewed/applied
+
+**v1.1** — Mar 2026
+- 📊 AI scoring with Groq
+- 🗄 Supabase cloud database
+
+**v1.0** — Mar 2026
+- 🚀 Initial launch — job scraper + dashboard
+        """)
+
 
 # ── Tabs ─────────────────────────────────────────────────────────────────────────
 main_tab, tracker_tab = st.tabs(["🔍 Job Board", "📊 My Applications"])
