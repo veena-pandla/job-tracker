@@ -56,6 +56,30 @@ if _should_scrape():
     t = threading.Thread(target=_run_scraper_bg, daemon=True)
     t.start()
 
+# ── Auto-check Gmail (max once every 1 hour) ──────────────────────────────────
+_GMAIL_STAMP_FILE = Path(__file__).parent / ".last_gmail_checked"
+
+def _should_check_gmail() -> bool:
+    if not _GMAIL_STAMP_FILE.exists():
+        return True
+    try:
+        last = datetime.fromisoformat(_GMAIL_STAMP_FILE.read_text().strip())
+        return (datetime.now() - last).total_seconds() > 3600
+    except Exception:
+        return True
+
+def _run_gmail_bg():
+    try:
+        from email_checker import check_gmail
+        check_gmail(days_back=7)
+        _GMAIL_STAMP_FILE.write_text(datetime.now().isoformat())
+    except Exception:
+        pass
+
+if _should_check_gmail():
+    tg = threading.Thread(target=_run_gmail_bg, daemon=True)
+    tg.start()
+
 st.title("💼 Job Application Tracker")
 
 if _PROGRESS_FILE.exists():
