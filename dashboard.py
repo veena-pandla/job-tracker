@@ -260,6 +260,51 @@ with st.sidebar:
                 st.toast(f"{icon} {r['classification'].upper()} from {r['company']}! ({sender})", icon=icon)
         st.rerun()
 
+    st.divider()
+    st.markdown("**Auto Apply**")
+    dry_run_toggle = st.checkbox("Dry Run (test only — won't actually submit)", value=True)
+    if st.button("🚀 Auto Apply — 5 LinkedIn Easy Apply", width="stretch"):
+        from database import get_jobs, update_status
+        from auto_apply import apply_to_jobs_batch
+
+        # Pick top 5 LinkedIn jobs not yet applied, sorted by score
+        candidate_jobs = get_jobs(status="new", min_score=0)
+        candidate_jobs += get_jobs(status="reviewed", min_score=0)
+        linkedin_candidates = [
+            j for j in candidate_jobs
+            if j.get("source") == "linkedin"
+            and j.get("url")
+            and j.get("status") not in ("applied", "interviewing", "offer", "rejected", "closed")
+        ]
+        # Sort by score descending, take top 5
+        linkedin_candidates.sort(key=lambda j: float(j.get("score") or 0), reverse=True)
+        to_apply = linkedin_candidates[:5]
+
+        if not to_apply:
+            st.warning("No LinkedIn jobs available to apply to. Run the scraper first.")
+        else:
+            label = "DRY RUN" if dry_run_toggle else "LIVE"
+            st.info(f"[{label}] Applying to {len(to_apply)} LinkedIn Easy Apply jobs...")
+            with st.spinner(f"Opening browser and applying... ({label})"):
+                results = apply_to_jobs_batch(to_apply, dry_run=dry_run_toggle)
+
+            success_count = sum(1 for r in results if r.get("success"))
+            fail_count    = len(results) - success_count
+
+            if not dry_run_toggle:
+                for r in results:
+                    if r.get("success"):
+                        job_id = r["job"].get("id")
+                        if job_id:
+                            update_status(job_id, "applied", "Applied via Auto Apply (Easy Apply)")
+
+            st.success(f"Done! {success_count} applied, {fail_count} skipped.")
+            for r in results:
+                j    = r["job"]
+                icon = "✅" if r.get("success") else "⚠️"
+                st.write(f"{icon} **{j.get('company')}** — {j.get('title')} | {r.get('notes', '')}")
+            st.rerun()
+
 
 # ── Tabs ─────────────────────────────────────────────────────────────────────────
 main_tab, tracker_tab = st.tabs(["🔍 Job Board", "📊 My Applications"])
@@ -425,6 +470,14 @@ with main_tab:
         job["apply_type"] = detect_apply_type(job)
         job["posted"]    = posted_age(job)
 
+        # Auto-mark as "reviewed" the first time a new job is viewed
+        if job.get("status") == "new":
+            _last_reviewed = st.session_state.get("_last_reviewed_id")
+            if _last_reviewed != job["id"]:
+                update_status(job["id"], "reviewed", job.get("notes", "") or "")
+                st.session_state["_last_reviewed_id"] = job["id"]
+                job["status"] = "reviewed"  # update local copy so UI reflects it
+
         col_a, col_b = st.columns([2, 1])
         with col_a:
             st.markdown(f"### {job['title']}")
@@ -446,13 +499,25 @@ with main_tab:
             apply_label = "Apply via Easy Apply (LinkedIn)" if job["apply_type"] == "Easy Apply" else \
                           "Apply via Quick Apply (Indeed)"  if job["apply_type"] == "Quick Apply"  else \
                           "Go to Job Page & Apply"
-            st.link_button(f"🚀 {apply_label}", job["url"], width="stretch")
+            link_col, mark_col = st.columns([3, 2])
+            with link_col:
+                st.link_button(f"🚀 {apply_label}", job["url"], width="stretch")
+            with mark_col:
+                current_status = job.get("status", "new")
+                if current_status not in ("applied", "interviewing", "offer"):
+                    if st.button("✅ I Applied — Mark as Applied", width="stretch"):
+                        update_status(job["id"], "applied", "Manually applied")
+                        st.success("Marked as applied!")
+                        st.rerun()
+                else:
+                    st.success(f"Status: {current_status.upper()}")
 
         with col_b:
             st.markdown("**Update Status**")
             statuses = ["new", "reviewed", "applied", "interviewing", "offer", "rejected", "closed"]
+            cur_idx = statuses.index(job.get("status", "new")) if job.get("status") in statuses else 0
             new_status = st.selectbox("New status", statuses,
-                                      index=statuses.index(job.get("status", "new")),
+                                      index=cur_idx,
                                       key="status_select")
             notes = st.text_input("Notes", value=job.get("notes", "") or "")
             if st.button("Save Status"):

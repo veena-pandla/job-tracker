@@ -5,7 +5,7 @@
 PROFILE = {
     "name": "Bagavathi Veena",
     "email": "veenab.aiml@gmail.com",
-    "phone": "your_phone_number",               # Add your phone number
+    "phone": "6125248551",
     "location": "Charlotte, NC (Open to Remote)",
     "linkedin": "https://www.linkedin.com/in/veena-bagavathi-0840673b5/",
     "github": "",
