@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
-from database import get_jobs, get_stats, update_status, get_job_by_id
+from database import get_jobs, get_stats, update_status, mark_applied, get_job_by_id
 
 st.set_page_config(
     page_title="Job Tracker — Veena",
@@ -345,11 +345,12 @@ with main_tab:
     if h1b_filter != "All":
         jobs = [j for j in jobs if j["h1b"] == h1b_filter]
 
-    # Auto-remove jobs posted more than 8 hours ago
+    # Auto-remove NEW jobs posted more than 8 hours ago (keep reviewed/applied always)
     now_utc = datetime.now(timezone.utc)
     jobs = [
         j for j in jobs
-        if _date_posted_dt(j) == datetime.min.replace(tzinfo=timezone.utc)
+        if j.get("status") not in ("new",)
+        or _date_posted_dt(j) == datetime.min.replace(tzinfo=timezone.utc)
         or (now_utc - _date_posted_dt(j)).total_seconds() <= 8 * 3600
     ]
 
@@ -506,7 +507,7 @@ with main_tab:
                 current_status = job.get("status", "new")
                 if current_status not in ("applied", "interviewing", "offer"):
                     if st.button("✅ I Applied — Mark as Applied", width="stretch"):
-                        update_status(job["id"], "applied", "Manually applied")
+                        mark_applied(job["id"], "Manually applied")
                         st.success("Marked as applied!")
                         st.rerun()
                 else:
