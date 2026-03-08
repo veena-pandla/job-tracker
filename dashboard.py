@@ -477,6 +477,16 @@ with main_tab:
         .map(color_applied,    subset=["applied?"])\
         .map(color_response,   subset=["response?"])
 
+    st.markdown(
+        "<small>"
+        "<span style='background:#fef9c3;padding:2px 7px;border-radius:3px;margin-right:6px'>🟡 Applied</span>"
+        "<span style='background:#bfdbfe;padding:2px 7px;border-radius:3px;margin-right:6px'>🔵 Interviewing</span>"
+        "<span style='background:#bbf7d0;padding:2px 7px;border-radius:3px;margin-right:6px'>🟢 Offer</span>"
+        "<span style='background:#f3e8ff;padding:2px 7px;border-radius:3px;margin-right:6px'>🟣 Reviewed</span>"
+        "<span style='background:#ffe4e6;padding:2px 7px;border-radius:3px'>🔴 Rejected</span>"
+        "</small>",
+        unsafe_allow_html=True
+    )
     st.dataframe(styled, width="stretch", height=400)
     st.caption(f"Showing {len(jobs)} jobs")
 
