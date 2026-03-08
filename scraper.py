@@ -44,10 +44,15 @@ def scrape_all_jobs(keywords: list[str]) -> list[dict]:
                 dp = row.get("date_posted")
                 if dp is not None:
                     try:
-                        if hasattr(dp, "isoformat"):
+                        import pandas as pd
+                        if pd.isna(dp):
+                            date_posted = ""
+                        elif hasattr(dp, "isoformat"):
                             date_posted = dp.isoformat()
                         else:
-                            date_posted = str(dp)
+                            s = str(dp)
+                            if s.lower() not in ("nat", "none", "nan", ""):
+                                date_posted = s
                     except Exception:
                         date_posted = ""
 

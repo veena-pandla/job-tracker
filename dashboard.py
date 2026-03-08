@@ -121,10 +121,10 @@ def detect_h1b(job: dict) -> str:
 
 def posted_age(job: dict) -> str:
     date_str = job.get("date_posted", "") or job.get("date_found", "")
-    if not date_str:
+    if not date_str or str(date_str).lower() in ("nat", "none", "nan"):
         return "Unknown"
     try:
-        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(str(date_str).replace("Z", "+00:00"))
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         now = datetime.now(timezone.utc)
