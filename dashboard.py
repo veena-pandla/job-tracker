@@ -31,7 +31,7 @@ def _should_scrape() -> bool:
         return True
     try:
         last = datetime.fromisoformat(_STAMP_FILE.read_text().strip())
-        return (datetime.now() - last).total_seconds() > 2 * 3600
+        return (datetime.now() - last).total_seconds() > 30 * 60
     except Exception:
         return True
 
@@ -88,7 +88,7 @@ if _PROGRESS_FILE.exists():
 elif _STAMP_FILE.exists():
     try:
         last_dt = datetime.fromisoformat(_STAMP_FILE.read_text().strip())
-        st.success(f"✅ Jobs last updated at {last_dt.strftime('%I:%M %p')} — next refresh in 2 hours.", icon="✅")
+        st.success(f"✅ Jobs last updated at {last_dt.strftime('%I:%M %p')} — next refresh in 30 min.", icon="✅")
     except Exception:
         pass
 
@@ -195,6 +195,15 @@ def _date_found_dt(j):
 
 # ── Sidebar ─────────────────────────────────────────────────────────────────────
 with st.sidebar:
+    st.markdown("**Jobs**")
+    if st.button("🔄 Refresh Jobs Now", width="stretch", type="primary"):
+        if not _PROGRESS_FILE.exists():
+            t = threading.Thread(target=_run_scraper_bg, daemon=True)
+            t.start()
+            st.success("Fetching fresh jobs... check back in ~30 seconds.")
+        else:
+            st.info("Already refreshing — please wait.")
+    st.divider()
     st.header("Filters")
     status_filter = st.selectbox(
         "Status",
