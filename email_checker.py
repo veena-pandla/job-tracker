@@ -36,10 +36,42 @@ JOB_KEYWORDS = [
 
 # Classification patterns (fast, no AI needed for clear signals)
 REJECT_PHRASES = [
-    "unfortunately", "not moving forward", "not selected", "decided to move forward with other",
-    "will not be moving", "regret to inform", "not a fit", "other candidates",
-    "not proceed", "no longer", "position has been filled", "did not",
-    "unable to offer", "not successful",
+    # Direct soft rejections
+    "unfortunately", "regret to inform", "not selected", "not a fit",
+    "not be moving forward", "not moving forward", "will not be moving",
+    "unable to offer", "not successful", "did not select", "not proceed",
+    "cannot offer", "we won't be",
+
+    # "Decided to go with others" variations
+    "decided to move forward with other", "decided to pursue other",
+    "move forward with another", "pursuing other candidates",
+    "pursuing candidates whose", "decided to go with",
+    "other candidates more closely", "better suited candidates",
+    "stronger match", "more closely aligns",
+
+    # "Keep on file" = always a rejection
+    "keep your resume on file", "keep your application on file",
+    "keep you in mind for future", "consider you for future opportunities",
+    "encourage you to apply for future", "other opportunities at",
+
+    # "Position filled / no longer available"
+    "position has been filled", "role has been filled",
+    "position is no longer", "no longer accepting",
+
+    # Polite closings that signal rejection
+    "best of luck in your search", "best wishes in your job search",
+    "best wishes in your search", "wish you the best in your",
+    "success in your job search", "future endeavors",
+
+    # "After careful consideration" openers
+    "after careful consideration", "after thorough consideration",
+    "after reviewing your", "having reviewed your application",
+    "after much consideration",
+
+    # "We had many applicants"
+    "highly competitive", "strong pool of candidates",
+    "overwhelming number of applicants", "many qualified applicants",
+    "volume of applications",
 ]
 # Interview = only when there is an actual calendar/meeting invite (not just the word "interview")
 CALENDAR_SIGNALS = [
