@@ -193,8 +193,53 @@ def check_gmail(days_back: int = 14) -> list[dict]:
                 domain_match = re.search(r"@([\w.-]+)", sender)
                 sender_domain = domain_match.group(1).lower() if domain_match else ""
 
-                # Skip emails from job boards themselves (not company responses)
-                skip_domains = ["linkedin.com", "indeed.com", "glassdoor.com", "ziprecruiter.com",
+                # ── LinkedIn application confirmation emails ──────────────────
+                # LinkedIn sends "Your application was sent to [Company]" emails.
+                # Detect these separately before the skip_domains check.
+                is_linkedin = "linkedin.com" in sender_domain
+                if is_linkedin:
+                    subject_lower = subject.lower()
+                    body_lower    = body.lower()
+                    linkedin_confirm_phrases = [
+                        "your application was sent",
+                        "application was submitted",
+                        "you applied to",
+                        "application submitted to",
+                        "successfully applied",
+                    ]
+                    is_confirmation = any(p in subject_lower or p in body_lower
+                                         for p in linkedin_confirm_phrases)
+                    if is_confirmation:
+                        # Try to extract company from subject e.g. "Your application was sent to Acme Corp"
+                        company_from_subject = None
+                        for phrase in ["was sent to ", "applied to ", "submitted to "]:
+                            idx = subject_lower.find(phrase)
+                            if idx != -1:
+                                company_from_subject = subject[idx + len(phrase):].strip()
+                                break
+                        # Match against DB companies
+                        matched = _match_company("", subject, body, companies) or \
+                                  (company_from_subject and _match_company("", company_from_subject, "", companies))
+                        if matched:
+                            job = company_job.get(matched)
+                            if job and job.get("status") not in ("applied", "interviewing", "offer"):
+                                from database import mark_applied
+                                mark_applied(job["id"], f"[Auto] Applied — confirmed by LinkedIn email | {subject[:80]}")
+                                print(f"  [APPLIED] {matched} -> marked applied via LinkedIn confirmation email")
+                                results.append({
+                                    "company":        matched,
+                                    "subject":        subject,
+                                    "sender":         sender,
+                                    "sender_name":    "LinkedIn",
+                                    "classification": "applied_confirmation",
+                                    "job_id":         job["id"],
+                                    "new_status":     "applied",
+                                })
+                                processed += 1
+                    continue  # skip all other LinkedIn emails (job alerts, etc.)
+
+                # Skip other job board marketing emails (not company responses)
+                skip_domains = ["indeed.com", "glassdoor.com", "ziprecruiter.com",
                                 "greenhouse.io", "lever.co", "workday.com", "icims.com"]
                 if any(sd in sender_domain for sd in skip_domains):
                     continue

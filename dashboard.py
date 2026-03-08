@@ -256,7 +256,7 @@ with st.sidebar:
         else:
             st.success(f"Found {len(found)} job-related email(s)!")
             for r in found:
-                icon = {"offer": "🎉", "interview": "📅", "rejected": "❌", "follow_up": "📧"}.get(r["classification"], "📧")
+                icon = {"offer": "🎉", "interview": "📅", "rejected": "❌", "follow_up": "📧", "applied_confirmation": "✅"}.get(r["classification"], "📧")
                 st.write(f"{icon} **{r['company']}** — {r['classification'].upper()} | {r['subject'][:60]}")
             # Toast popup only for positive responses
             positives = [r for r in found if r["classification"] in ("interview", "offer")]
