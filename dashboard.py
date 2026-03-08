@@ -132,10 +132,16 @@ def color_posted_age(val: str) -> str:
 
 
 def detect_apply_type(job: dict) -> str:
-    url = (job.get("url", "") or "").lower()
     source = (job.get("source", "") or "").lower()
-    if source == "linkedin" and "linkedin.com/jobs" in url:
-        return "Easy Apply"
+    tags = job.get("tags") or []
+    if isinstance(tags, str):
+        import json
+        try:
+            tags = json.loads(tags)
+        except Exception:
+            tags = [t.strip() for t in tags.split(",")]
+    if source == "linkedin":
+        return "Easy Apply" if "easy_apply" in tags else "External Site"
     if source == "indeed":
         return "Quick Apply"
     return "External Site"
