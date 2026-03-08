@@ -75,13 +75,16 @@ REJECT_PHRASES = [
 ]
 # Interview = only when there is an actual calendar/meeting invite (not just the word "interview")
 CALENDAR_SIGNALS = [
+    # Real video call links
     "zoom.us/j/", "zoom.us/meeting", "meet.google.com/",
-    "teams.microsoft.com/", "webex.com/", "gotomeeting.com/",
-    "calendar invitation", "calendar invite", "you have been invited",
-    "you're invited", "accepted this invitation", "add to calendar",
-    ".ics", "ical", "vcalendar",
-    "scheduled for", "your interview is", "interview is scheduled",
-    "confirmed for", "book a time", "pick a time", "choose a time",
+    "teams.microsoft.com/l/meetup", "webex.com/meet/", "gotomeeting.com/join/",
+    # Calendar attachment signals (only in email parts, checked separately)
+    "vcalendar",
+    # Explicit interview scheduling phrases (very specific)
+    "your interview is scheduled", "interview is confirmed",
+    "interview has been scheduled", "we'd like to schedule an interview",
+    "we would like to schedule an interview", "please schedule your interview",
+    "schedule a phone screen", "schedule a video interview",
     "calendly.com/",
 ]
 OFFER_PHRASES = [
