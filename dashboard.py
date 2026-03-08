@@ -503,21 +503,29 @@ with main_tab:
             if job.get("score_reason"): st.info(f"AI reasoning: {job['score_reason']}")
 
             st.markdown("---")
+            current_status = job.get("status", "new")
             apply_label = "Apply via Easy Apply (LinkedIn)" if job["apply_type"] == "Easy Apply" else \
                           "Apply via Quick Apply (Indeed)"  if job["apply_type"] == "Quick Apply"  else \
                           "Go to Job Page & Apply"
-            link_col, mark_col = st.columns([3, 2])
-            with link_col:
-                st.link_button(f"🚀 {apply_label}", job["url"], width="stretch")
-            with mark_col:
-                current_status = job.get("status", "new")
-                if current_status not in ("applied", "interviewing", "offer"):
-                    if st.button("✅ I Applied — Mark as Applied", width="stretch"):
-                        mark_applied(job["id"], "Manually applied")
-                        st.success("Marked as applied!")
-                        st.rerun()
-                else:
-                    st.success(f"Status: {current_status.upper()}")
+
+            if current_status not in ("applied", "interviewing", "offer"):
+                # Single button: marks as applied AND shows the link to click
+                if st.button(f"🚀 {apply_label} — Mark as Applied", width="stretch", type="primary"):
+                    mark_applied(job["id"], "Applied via dashboard")
+                    st.session_state["_open_url"] = job["url"]
+                    st.rerun()
+                st.caption("Click above to mark as applied, then open the job link that appears.")
+            else:
+                st.success(f"✅ Status: {current_status.upper()}")
+                st.link_button("🔗 View Job Page", job["url"])
+
+            # Show job URL link after marking applied (persists until next job selected)
+            if st.session_state.get("_open_url") == job["url"]:
+                st.info("✅ Marked as Applied! Now open the job page:")
+                st.link_button("→ Open Job Page Now", job["url"], width="stretch")
+                if st.button("Done, close link", key="close_link"):
+                    st.session_state.pop("_open_url", None)
+                    st.rerun()
 
         with col_b:
             st.markdown("**Update Status**")
