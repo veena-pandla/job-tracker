@@ -135,23 +135,43 @@ async def linkedin_login(page, context) -> bool:
             print("[LinkedIn] Logged in via saved cookies.")
             return True
 
-    # Fresh login
+    # Delete expired cookies and do fresh login
+    if COOKIES_FILE.exists():
+        COOKIES_FILE.unlink()
+
     print(f"[LinkedIn] Logging in as {LINKEDIN_EMAIL}...")
     await page.goto("https://www.linkedin.com/login", timeout=30000)
-    await human_delay(1500, 3000)
+    await human_delay(2000, 3500)
 
-    await human_type(page, 'input[name="session_key"]', LINKEDIN_EMAIL)
-    await human_delay(400, 800)
-    await human_type(page, 'input[name="session_password"]', LINKEDIN_PASSWORD)
-    await human_delay(600, 1200)
+    # Fill email — use fill() + dispatch input event so LinkedIn JS enables the button
+    email_field = page.locator('input[name="session_key"]')
+    await email_field.click()
+    await human_delay(300, 600)
+    await email_field.fill(LINKEDIN_EMAIL)
+    await email_field.dispatch_event("input")
+    await email_field.dispatch_event("change")
+    await human_delay(500, 900)
 
+    # Fill password
+    pass_field = page.locator('input[name="session_password"]')
+    await pass_field.click()
+    await human_delay(300, 600)
+    await pass_field.fill(LINKEDIN_PASSWORD)
+    await pass_field.dispatch_event("input")
+    await pass_field.dispatch_event("change")
+    await human_delay(700, 1200)
+
+    # Wait for submit button to become enabled, then click
     submit = page.locator('button[type="submit"]')
-    await human_click(page, submit)
-    await page.wait_for_timeout(5000)
+    await submit.wait_for(state="visible", timeout=10000)
+    # Small wait to let LinkedIn JS fully enable the button
+    await human_delay(800, 1500)
+    await submit.click()
+    await page.wait_for_timeout(6000)
 
-    if "checkpoint" in page.url or "login" in page.url:
-        print("[LinkedIn] CAPTCHA or verification required — solve it in the browser (60s)...")
-        await page.wait_for_timeout(60000)
+    if "checkpoint" in page.url or "login" in page.url or "challenge" in page.url:
+        print("[LinkedIn] CAPTCHA or verification required — solve it in the browser (90s)...")
+        await page.wait_for_timeout(90000)
 
     if "feed" in page.url or "mynetwork" in page.url or "jobs" in page.url:
         cookies = await context.cookies()
