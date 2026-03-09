@@ -165,7 +165,7 @@ def detect_apply_type(job: dict) -> str:
         except Exception:
             tags = [t.strip() for t in tags.split(",")]
     if source == "linkedin":
-        return "Easy Apply" if "easy_apply" in tags else "External Site"
+        return "External Site" if "not_easy_apply" in tags else "Easy Apply"
     if source == "indeed":
         return "Quick Apply"
     return "External Site"

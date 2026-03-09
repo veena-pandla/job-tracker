@@ -78,8 +78,9 @@ def scrape_all_jobs(keywords: list[str]) -> list[dict]:
                 if job_type_raw:
                     tags.append(job_type_raw)
                 # Capture LinkedIn Easy Apply flag from jobspy
-                if row.get("is_easy_apply") is True:
-                    tags.append("easy_apply")
+                # Default is Easy Apply; tag only if explicitly NOT easy apply
+                if row.get("is_easy_apply") is False:
+                    tags.append("not_easy_apply")
 
                 all_jobs.append({
                     "title":       str(row.get("title", "") or ""),
