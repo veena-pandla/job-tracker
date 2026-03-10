@@ -12,7 +12,10 @@ import subprocess
 import sys
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from database import get_jobs, get_stats, update_status, mark_applied, get_job_by_id
+
+EASTERN = ZoneInfo("America/New_York")
 
 st.set_page_config(
     page_title="Job Tracker — Veena",
@@ -43,7 +46,7 @@ def _run_scraper_bg():
             cwd=str(Path(__file__).parent),
             capture_output=True
         )
-        _STAMP_FILE.write_text(datetime.now().isoformat())
+        _STAMP_FILE.write_text(datetime.now(timezone.utc).isoformat())
     except Exception:
         pass
     finally:
@@ -88,7 +91,10 @@ if _PROGRESS_FILE.exists():
 elif _STAMP_FILE.exists():
     try:
         last_dt = datetime.fromisoformat(_STAMP_FILE.read_text().strip())
-        st.success(f"✅ Jobs last updated at {last_dt.strftime('%I:%M %p')} — next refresh in 30 min.", icon="✅")
+        if last_dt.tzinfo is None:
+            last_dt = last_dt.replace(tzinfo=timezone.utc)
+        last_dt_et = last_dt.astimezone(EASTERN)
+        st.success(f"✅ Jobs last updated at {last_dt_et.strftime('%I:%M %p ET')} — next refresh in 30 min.", icon="✅")
     except Exception:
         pass
 
@@ -120,32 +126,34 @@ def detect_h1b(job: dict) -> str:
 
 
 def posted_age(job: dict) -> str:
-    date_str = job.get("date_posted", "") or job.get("date_found", "")
+    # Use only date_posted (from LinkedIn via jobspy) — date_found is when WE scraped it
+    date_str = job.get("date_posted", "")
     if not date_str or str(date_str).lower() in ("nat", "none", "nan"):
         return "Unknown"
     try:
         dt = datetime.fromisoformat(str(date_str).replace("Z", "+00:00"))
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
-        now = datetime.now(timezone.utc)
-        diff = now - dt
-        hours = int(diff.total_seconds() / 3600)
-        if hours < 1:
-            return "Just posted"
-        if hours < 24:
-            return f"{hours}h ago"
-        days = diff.days
-        if days < 7:
-            return f"{days}d ago"
-        return f"{days // 7}w ago"
+        # jobspy gives date-only (no time), so compare by calendar date in ET
+        # This matches LinkedIn's "posted X days ago" display
+        now_et = datetime.now(EASTERN)
+        dt_date = dt.astimezone(EASTERN).date()
+        diff_days = (now_et.date() - dt_date).days
+        if diff_days == 0:
+            return "Today"
+        if diff_days == 1:
+            return "Yesterday"
+        if diff_days < 7:
+            return f"{diff_days}d ago"
+        return f"{diff_days // 7}w ago"
     except Exception:
         return "Unknown"
 
 
 def color_posted_age(val: str) -> str:
-    if "Just posted" in val or ("h ago" in val and int(val.replace("h ago", "").strip() or 99) <= 6):
+    if val == "Today":
         return "color: #15803d; font-weight: bold"
-    if "h ago" in val:
+    if val == "Yesterday":
         return "color: #1d4ed8"
     if "d ago" in val:
         days = int(val.replace("d ago", "").strip() or 99)
