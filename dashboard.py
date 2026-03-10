@@ -359,20 +359,19 @@ with st.sidebar:
         st.code(result.stdout[-2000:] if result.stdout else result.stderr[-1000:])
 
     if st.button("🎓 Scrape Internships Now", width="stretch"):
-        import subprocess, sys, os
-        intern_keywords = (
-            "machine learning intern,AI intern,data science intern,"
-            "software engineer intern,python intern,data engineer intern,"
-            "ML intern,AI research intern,backend intern,full stack intern"
-        )
-        with st.spinner("Scraping internship jobs..."):
-            env = {**os.environ, "JOB_KEYWORDS": intern_keywords}
-            result = subprocess.run(
-                [sys.executable, "main.py", "--scrape-only"],
-                capture_output=True, text=True, cwd=".", env=env
-            )
-        st.success("Done! Check the 🎓 Internships tab.")
-        st.code(result.stdout[-2000:] if result.stdout else result.stderr[-1000:])
+        with st.spinner("Scraping from LinkedIn, Indeed, Glassdoor, RemoteOK, RSS feeds..."):
+            try:
+                from scrape_internships import scrape_all_intern_jobs
+                from database import insert_job
+                intern_raw = scrape_all_intern_jobs()
+                added = 0
+                for job in intern_raw:
+                    job_id = insert_job(job)
+                    if job_id is not None:
+                        added += 1
+                st.success(f"✅ Found {len(intern_raw)} internships, {added} new added. Check the 🎓 Internships tab!")
+            except Exception as e:
+                st.error(f"Scraper error: {e}")
 
     if st.button("Check Gmail Inbox", width="stretch"):
         from email_checker import check_gmail
@@ -446,6 +445,11 @@ with st.sidebar:
     st.divider()
     with st.expander("📋 Changelog", expanded=False):
         st.markdown("""
+**v1.9** — Mar 2026
+- 🌐 More internship sources: RemoteOK API + Indeed RSS feeds (not just LinkedIn)
+- 📄 Internship resume upload + AI generator (no work experience — education/skills/projects only)
+- 🔍 Internship tab filters: source, status, search, freshness
+
 **v1.8** — Mar 2026
 - 🎓 New Internships tab — scrapes and shows intern-specific jobs from all boards
 - 🎓 "Scrape Internships Now" button in sidebar
@@ -921,31 +925,74 @@ with intern_tab:
         "<div style='background:#f0fdf4; border-left:5px solid #16a34a; "
         "padding:14px 20px; border-radius:8px; margin-bottom:16px;'>"
         "<b style='color:#14532d; font-size:16px'>🎓 Internship Jobs</b><br>"
-        "<small style='color:#166534'>Jobs with 'intern' in the title, scraped from LinkedIn, Indeed, Glassdoor & ZipRecruiter. "
+        "<small style='color:#166534'>Scraped from LinkedIn, Indeed, Glassdoor, ZipRecruiter, "
+        "<b>RemoteOK</b>, and <b>Indeed RSS feeds</b>. "
         "Click <b>🎓 Scrape Internships Now</b> in the sidebar to fetch fresh listings.</small></div>",
         unsafe_allow_html=True
     )
 
-    all_jobs_intern = get_jobs(status=None, min_score=0)
+    # ── Internship Resume Section ────────────────────────────────────────────────
+    _INTERN_RESUME_PATH = Path(__file__).parent / "intern_resume.pdf"
+    _INTERN_RESUME_DOCX_PATH = Path(__file__).parent / "intern_resume.docx"
 
-    # Filter to internship jobs — title contains "intern"
+    with st.expander("📄 My Internship Resume", expanded=False):
+        st.markdown(
+            "Upload a resume **without work experience** — tailored for internship applications "
+            "(education, skills, projects only). This will be used when generating tailored internship resumes."
+        )
+        uploaded_resume = st.file_uploader(
+            "Upload your internship resume (PDF or DOCX)",
+            type=["pdf", "docx"],
+            key="intern_resume_upload"
+        )
+        if uploaded_resume:
+            save_path = _INTERN_RESUME_PATH if uploaded_resume.name.endswith(".pdf") else _INTERN_RESUME_DOCX_PATH
+            save_path.write_bytes(uploaded_resume.read())
+            st.success(f"✅ Saved as `{save_path.name}` — will be used for internship applications.")
+
+        # Show download button if a resume is already saved
+        if _INTERN_RESUME_PATH.exists():
+            st.download_button(
+                label="⬇ Download saved internship resume (PDF)",
+                data=_INTERN_RESUME_PATH.read_bytes(),
+                file_name="intern_resume.pdf",
+                mime="application/pdf",
+                key="dl_intern_pdf"
+            )
+        if _INTERN_RESUME_DOCX_PATH.exists():
+            st.download_button(
+                label="⬇ Download saved internship resume (DOCX)",
+                data=_INTERN_RESUME_DOCX_PATH.read_bytes(),
+                file_name="intern_resume.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="dl_intern_docx"
+            )
+        if not _INTERN_RESUME_PATH.exists() and not _INTERN_RESUME_DOCX_PATH.exists():
+            st.info("No internship resume uploaded yet. Upload one above, or use 'Generate AI Resume' in the job detail below.")
+
+    st.divider()
+
+    # Load and filter
+    all_jobs_intern = get_jobs(status=None, min_score=0)
+    _INTERN_WORDS = ("intern", "internship", "trainee", "co-op", "coop")
     intern_jobs = [
         j for j in all_jobs_intern
-        if "intern" in (j.get("title", "") or "").lower()
+        if any(w in (j.get("title", "") or "").lower() for w in _INTERN_WORDS)
     ]
 
-    # Compute display columns
     for j in intern_jobs:
         j["job_type"]   = detect_job_type(j)
         j["apply_type"] = detect_apply_type(j)
         j["posted"]     = posted_age(j)
         j["applied?"]   = "Yes" if j.get("status") in ("applied", "interviewing", "offer") else "No"
 
-    # Sidebar-like filters inline
-    icol1, icol2, icol3 = st.columns(3)
+    # Filters row
+    icol1, icol2, icol3, icol4 = st.columns(4)
     with icol1:
         intern_source = st.multiselect(
-            "Source", ["linkedin", "indeed", "glassdoor", "zip_recruiter"], default=[], key="intern_source"
+            "Source",
+            ["linkedin", "indeed", "glassdoor", "zip_recruiter", "remoteok"],
+            default=[], key="intern_source"
         )
     with icol2:
         intern_status = st.selectbox(
@@ -953,6 +1000,12 @@ with intern_tab:
         )
     with icol3:
         intern_search = st.text_input("Search title / company", value="", key="intern_search")
+    with icol4:
+        intern_fresh = st.selectbox(
+            "Posted Within",
+            ["All time", "1 day", "3 days", "This week"],
+            key="intern_fresh"
+        )
 
     if intern_source:
         intern_jobs = [j for j in intern_jobs if j.get("source") in intern_source]
@@ -965,16 +1018,24 @@ with intern_tab:
             if q in (j.get("title", "") or "").lower()
             or q in (j.get("company", "") or "").lower()
         ]
+    if intern_fresh != "All time":
+        _fresh_map = {"1 day": 1440, "3 days": 4320, "This week": 10080}
+        _fresh_min = _fresh_map[intern_fresh]
+        _now_utc   = datetime.now(timezone.utc)
+        intern_jobs = [
+            j for j in intern_jobs
+            if (_now_utc - _date_found_dt(j)).total_seconds() / 60 <= _fresh_min
+        ]
 
-    # Sort newest first
     intern_jobs.sort(key=lambda j: (_date_posted_dt(j), _date_found_dt(j)), reverse=True)
 
     # Metrics
-    im1, im2, im3, im4 = st.columns(4)
-    im1.metric("Total Internships", len(intern_jobs))
+    im1, im2, im3, im4, im5 = st.columns(5)
+    im1.metric("Total", len(intern_jobs))
     im2.metric("LinkedIn", sum(1 for j in intern_jobs if j.get("source") == "linkedin"))
     im3.metric("Indeed", sum(1 for j in intern_jobs if j.get("source") == "indeed"))
-    im4.metric("Applied", sum(1 for j in intern_jobs if j.get("status") in ("applied", "interviewing", "offer")))
+    im4.metric("RemoteOK", sum(1 for j in intern_jobs if j.get("source") == "remoteok"))
+    im5.metric("Applied", sum(1 for j in intern_jobs if j.get("status") in ("applied", "interviewing", "offer")))
 
     if not intern_jobs:
         st.info(
@@ -994,7 +1055,7 @@ with intern_tab:
             .map(color_posted_age, subset=["posted"] if "posted" in idf_display.columns else [])\
             .map(color_applied,    subset=["applied?"] if "applied?" in idf_display.columns else [])
 
-        st.dataframe(styled_intern, width="stretch", height=400)
+        st.dataframe(styled_intern, width="stretch", height=380)
         st.caption(f"Showing {len(intern_jobs)} internship jobs")
 
         st.divider()
@@ -1047,7 +1108,8 @@ with intern_tab:
 
                 st.markdown("---")
                 if ijob.get("status") not in ("applied", "interviewing", "offer"):
-                    if st.button("✅ I Applied — Mark as Applied", key="intern_mark_applied", width="stretch", type="primary"):
+                    if st.button("✅ I Applied — Mark as Applied", key="intern_mark_applied",
+                                 width="stretch", type="primary"):
                         mark_applied(ijob["id"], "Manually applied via Internships tab")
                         st.session_state["_intern_open_url"] = ijob["url"]
                         st.rerun()
@@ -1076,6 +1138,61 @@ with intern_tab:
                     st.success("Updated!")
                     st.rerun()
 
-            with st.expander("📄 Job Description", expanded=True):
+            # ── Tabs: Description / Internship Resume ──────────────────────────
+            itabs = st.tabs(["📄 Description", "📝 Internship Resume"])
+
+            with itabs[0]:
                 desc = ijob.get("description") or ""
                 st.text(desc if desc and desc.lower() != "nan" else "No description available")
+
+            with itabs[1]:
+                st.markdown(
+                    "Generate an internship-friendly resume for this job — **no work experience**, "
+                    "just education, skills, and projects tailored to this role. "
+                    "Perfect for companies that won't consider candidates with full-time experience."
+                )
+                # If user already uploaded an internship resume, offer that first
+                if _INTERN_RESUME_PATH.exists():
+                    st.download_button(
+                        label="⬇ Download My Uploaded Internship Resume (PDF)",
+                        data=_INTERN_RESUME_PATH.read_bytes(),
+                        file_name="intern_resume.pdf",
+                        mime="application/pdf",
+                        key=f"dl_up_pdf_{ijob['id']}"
+                    )
+                if _INTERN_RESUME_DOCX_PATH.exists():
+                    st.download_button(
+                        label="⬇ Download My Uploaded Internship Resume (DOCX)",
+                        data=_INTERN_RESUME_DOCX_PATH.read_bytes(),
+                        file_name="intern_resume.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key=f"dl_up_docx_{ijob['id']}"
+                    )
+
+                st.markdown("---")
+                st.markdown("**Or generate an AI-tailored version for this specific job:**")
+                if st.button("🤖 Generate AI Internship Resume", key=f"gen_intern_res_{ijob['id']}",
+                             width="stretch"):
+                    with st.spinner("AI is tailoring your internship resume..."):
+                        from ai_engine import generate_tailored_resume
+                        from resume_builder import build_intern_resume_docx
+                        tailored = generate_tailored_resume(ijob)
+                        resume_bytes = build_intern_resume_docx(ijob, tailored)
+                    st.success("Internship resume ready! (No work experience — education, skills & projects only)")
+                    safe_co    = "".join(c for c in (ijob.get("company", "company") or "") if c.isalnum() or c in "-_")
+                    safe_title = "".join(c for c in (ijob.get("title", "intern") or "")  if c.isalnum() or c in "-_")
+                    st.download_button(
+                        label="⬇ Download Internship Resume (.docx)",
+                        data=resume_bytes,
+                        file_name=f"InternResume_{safe_co}_{safe_title}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key=f"dl_gen_intern_{ijob['id']}",
+                        width="stretch"
+                    )
+                    if tailored.get("extra_bullets"):
+                        with st.expander("Preview: New ATS Bullets (added to Projects)"):
+                            for b in tailored["extra_bullets"]:
+                                st.markdown(f"• {b}")
+                    if tailored.get("priority_skills"):
+                        with st.expander("Preview: Skills Reordered"):
+                            st.write("  •  ".join(tailored["priority_skills"]) + "  (+ all your other skills)")

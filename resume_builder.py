@@ -168,3 +168,113 @@ def build_resume_docx(job: dict, tailored: dict) -> bytes:
     buffer = io.BytesIO()
     doc.save(buffer)
     return buffer.getvalue()
+
+
+def build_intern_resume_docx(job: dict, tailored: dict) -> bytes:
+    """
+    Build an internship-optimised resume Word document.
+
+    Key differences from the regular resume:
+    - NO work experience section (hiring managers won't consider 6-yr exp for intern roles)
+    - Objective statement tailored to the specific internship
+    - Education comes first (most important signal for internship hiring)
+    - Projects are the star section — include AI-tailored bullet points here
+    - Skills listed with internship-relevant ones prioritised
+    """
+    doc = Document()
+    _set_margins(doc)
+
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(10)
+
+    # ── HEADER ────────────────────────────────────────────────────────────────
+    name_para = doc.add_paragraph()
+    name_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    name_run = name_para.add_run(PROFILE.get("name", ""))
+    name_run.bold = True
+    name_run.font.size = Pt(16)
+
+    contact_para = doc.add_paragraph()
+    contact_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    contact_parts = []
+    if PROFILE.get("email"):    contact_parts.append(PROFILE["email"])
+    if PROFILE.get("phone") and PROFILE["phone"] != "your_phone_number":
+        contact_parts.append(PROFILE["phone"])
+    if PROFILE.get("linkedin"): contact_parts.append(PROFILE["linkedin"])
+    if PROFILE.get("location"): contact_parts.append(PROFILE["location"])
+    contact_run = contact_para.add_run("  |  ".join(contact_parts))
+    contact_run.font.size = Pt(9)
+
+    doc.add_paragraph()
+
+    # ── OBJECTIVE ─────────────────────────────────────────────────────────────
+    _add_heading(doc, "Objective")
+    job_title   = job.get("title", "internship role")
+    job_company = job.get("company", "your company")
+    objective_text = tailored.get("objective") or (
+        f"Motivated graduate student seeking a {job_title} at {job_company}. "
+        f"Passionate about machine learning, AI, and building production-grade software. "
+        f"Eager to contribute hands-on and grow within a high-impact engineering team."
+    )
+    obj_para = doc.add_paragraph()
+    obj_run = obj_para.add_run(objective_text)
+    obj_run.font.size = Pt(10)
+    obj_run.italic = True
+
+    doc.add_paragraph()
+
+    # ── EDUCATION — first and prominent ───────────────────────────────────────
+    _add_heading(doc, "Education")
+    for edu in PROFILE.get("education", []):
+        edu_para = doc.add_paragraph()
+        deg_run = edu_para.add_run(f"{edu['degree']}")
+        deg_run.bold = True
+        deg_run.font.size = Pt(10)
+        school_run = edu_para.add_run(f"  —  {edu['school']}  |  {edu.get('year', '')}")
+        school_run.font.size = Pt(10)
+        school_run.italic = True
+        if edu.get("relevant_courses"):
+            courses_para = doc.add_paragraph()
+            courses_run = courses_para.add_run(
+                "Relevant Coursework: " + ", ".join(edu["relevant_courses"])
+            )
+            courses_run.font.size = Pt(10)
+            courses_run.italic = True
+
+    doc.add_paragraph()
+
+    # ── SKILLS — priority skills first ────────────────────────────────────────
+    _add_heading(doc, "Technical Skills")
+    all_skills = PROFILE.get("skills", [])
+    priority = tailored.get("priority_skills", [])
+    priority_set = {s.lower() for s in priority}
+    ordered_skills = [s for s in all_skills if s.lower() in priority_set] + \
+                     [s for s in all_skills if s.lower() not in priority_set]
+    skills_para = doc.add_paragraph()
+    skills_run = skills_para.add_run("  •  ".join(ordered_skills))
+    skills_run.font.size = Pt(10)
+
+    doc.add_paragraph()
+
+    # ── PROJECTS — main selling section with AI bullets ────────────────────────
+    projects = PROFILE.get("projects", [])
+    extra_bullets = tailored.get("extra_bullets", [])
+    if projects:
+        _add_heading(doc, "Projects")
+        for i, proj in enumerate(projects):
+            proj_para = doc.add_paragraph()
+            proj_name_run = proj_para.add_run(f"{proj['name']}: ")
+            proj_name_run.bold = True
+            proj_name_run.font.size = Pt(10)
+            desc_run = proj_para.add_run(proj.get("description", ""))
+            desc_run.font.size = Pt(10)
+            # Add AI-tailored bullets to the first project
+            if i == 0 and extra_bullets:
+                for eb in extra_bullets:
+                    _add_bullet(doc, eb)
+
+    # ── Save to bytes ──────────────────────────────────────────────────────────
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()
