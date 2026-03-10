@@ -22,17 +22,22 @@ EASTERN = ZoneInfo("America/New_York")
 _EASY_APPLY_CACHE: dict[str, bool] = {}
 
 def check_linkedin_easy_apply(url: str) -> bool:
-    """Fetch LinkedIn job page and check if Easy Apply button exists."""
+    """
+    Use LinkedIn's jobs-guest API to detect Easy Apply.
+    Signal: 'apply-link-offsite' in response = External Site; absent = Easy Apply.
+    """
     if url in _EASY_APPLY_CACHE:
         return _EASY_APPLY_CACHE[url]
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-            "Accept-Language": "en-US,en;q=0.9",
-        }
-        r = requests.get(url, headers=headers, timeout=8)
-        html = r.text.lower()
-        is_easy = "easy apply" in html or "easy-apply" in html
+        import re
+        job_id_match = re.search(r"/view/(\d+)", url)
+        if not job_id_match:
+            return False
+        job_id = job_id_match.group(1)
+        api_url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"}
+        r = requests.get(api_url, headers=headers, timeout=8)
+        is_easy = "apply-link-offsite" not in r.text.lower()
         _EASY_APPLY_CACHE[url] = is_easy
         return is_easy
     except Exception:
