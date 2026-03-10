@@ -86,8 +86,7 @@ if _should_check_gmail():
 st.title("💼 Job Application Tracker")
 
 if _PROGRESS_FILE.exists():
-    st.info("🔄 Fetching fresh jobs... page will auto-refresh shortly.", icon="🔄")
-    st.markdown('<meta http-equiv="refresh" content="20">', unsafe_allow_html=True)
+    st.info("🔄 Fetching fresh jobs in the background — click **🔄 Refresh Jobs Now** when done to see new results.", icon="🔄")
 elif _STAMP_FILE.exists():
     try:
         last_dt = datetime.fromisoformat(_STAMP_FILE.read_text().strip())
