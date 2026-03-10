@@ -359,17 +359,27 @@ with st.sidebar:
         st.code(result.stdout[-2000:] if result.stdout else result.stderr[-1000:])
 
     if st.button("🎓 Scrape Internships Now", width="stretch"):
-        with st.spinner("Scraping from LinkedIn, Indeed, Glassdoor, RemoteOK, RSS feeds..."):
+        with st.spinner("Scraping company career pages + job boards for internships..."):
             try:
+                from scrape_company_internships import scrape_all_company_internships
                 from scrape_internships import scrape_all_intern_jobs
                 from database import insert_job
-                intern_raw = scrape_all_intern_jobs()
+                # Company career pages first (Greenhouse + Lever) — most legit internships
+                company_raw = scrape_all_company_internships()
+                # Job boards as supplement
+                board_raw   = scrape_all_intern_jobs()
+                all_raw     = company_raw + board_raw
                 added = 0
-                for job in intern_raw:
+                for job in all_raw:
                     job_id = insert_job(job)
                     if job_id is not None:
                         added += 1
-                st.success(f"✅ Found {len(intern_raw)} internships, {added} new added. Check the 🎓 Internships tab!")
+                co_count = len(company_raw)
+                bd_count = len(board_raw)
+                st.success(
+                    f"✅ {co_count} from company career pages + {bd_count} from job boards "
+                    f"= {len(all_raw)} total, **{added} new** added. Check the 🎓 Internships tab!"
+                )
             except Exception as e:
                 st.error(f"Scraper error: {e}")
 
@@ -445,8 +455,9 @@ with st.sidebar:
     st.divider()
     with st.expander("📋 Changelog", expanded=False):
         st.markdown("""
-**v1.9** — Mar 2026
-- 🌐 More internship sources: RemoteOK API + Indeed RSS feeds (not just LinkedIn)
+**v2.0** — Mar 2026
+- 🏢 Company career pages: Greenhouse + Lever APIs (Anthropic, Databricks, Stripe, Netflix, 70+ companies)
+- 🌐 More internship sources: RemoteOK API + Indeed RSS feeds
 - 📄 Internship resume upload + AI generator (no work experience — education/skills/projects only)
 - 🔍 Internship tab filters: source, status, search, freshness
 
@@ -979,7 +990,7 @@ with intern_tab:
         j for j in all_jobs_intern
         if any(w in (j.get("title", "") or "").lower() for w in _INTERN_WORDS)
         or "internship" in str(j.get("tags", "") or "").lower()
-        or j.get("source") == "remoteok"   # RemoteOK results are all intern-tagged
+        or j.get("source") in ("remoteok", "greenhouse", "lever")
     ]
 
     for j in intern_jobs:
@@ -993,7 +1004,7 @@ with intern_tab:
     with icol1:
         intern_source = st.multiselect(
             "Source",
-            ["linkedin", "indeed", "glassdoor", "zip_recruiter", "remoteok"],
+            ["greenhouse", "lever", "linkedin", "indeed", "glassdoor", "zip_recruiter", "remoteok"],
             default=[], key="intern_source"
         )
     with icol2:
@@ -1032,12 +1043,13 @@ with intern_tab:
     intern_jobs.sort(key=lambda j: (_date_posted_dt(j), _date_found_dt(j)), reverse=True)
 
     # Metrics
-    im1, im2, im3, im4, im5 = st.columns(5)
+    im1, im2, im3, im4, im5, im6 = st.columns(6)
     im1.metric("Total", len(intern_jobs))
-    im2.metric("LinkedIn", sum(1 for j in intern_jobs if j.get("source") == "linkedin"))
-    im3.metric("Indeed", sum(1 for j in intern_jobs if j.get("source") == "indeed"))
-    im4.metric("RemoteOK", sum(1 for j in intern_jobs if j.get("source") == "remoteok"))
-    im5.metric("Applied", sum(1 for j in intern_jobs if j.get("status") in ("applied", "interviewing", "offer")))
+    im2.metric("🏢 Company Sites", sum(1 for j in intern_jobs if j.get("source") in ("greenhouse", "lever")))
+    im3.metric("LinkedIn", sum(1 for j in intern_jobs if j.get("source") == "linkedin"))
+    im4.metric("Indeed", sum(1 for j in intern_jobs if j.get("source") == "indeed"))
+    im5.metric("RemoteOK", sum(1 for j in intern_jobs if j.get("source") == "remoteok"))
+    im6.metric("Applied", sum(1 for j in intern_jobs if j.get("status") in ("applied", "interviewing", "offer")))
 
     if not intern_jobs:
         st.info(
