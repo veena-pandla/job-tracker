@@ -972,12 +972,14 @@ with intern_tab:
 
     st.divider()
 
-    # Load and filter
+    # Load and filter — match by title OR by "internship" tag
     all_jobs_intern = get_jobs(status=None, min_score=0)
     _INTERN_WORDS = ("intern", "internship", "trainee", "co-op", "coop")
     intern_jobs = [
         j for j in all_jobs_intern
         if any(w in (j.get("title", "") or "").lower() for w in _INTERN_WORDS)
+        or "internship" in str(j.get("tags", "") or "").lower()
+        or j.get("source") == "remoteok"   # RemoteOK results are all intern-tagged
     ]
 
     for j in intern_jobs:
