@@ -14,8 +14,29 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from database import get_jobs, get_stats, update_status, mark_applied, get_job_by_id
+import requests
 
 EASTERN = ZoneInfo("America/New_York")
+
+# Cache Easy Apply checks so we only fetch each job URL once per session
+_EASY_APPLY_CACHE: dict[str, bool] = {}
+
+def check_linkedin_easy_apply(url: str) -> bool:
+    """Fetch LinkedIn job page and check if Easy Apply button exists."""
+    if url in _EASY_APPLY_CACHE:
+        return _EASY_APPLY_CACHE[url]
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        r = requests.get(url, headers=headers, timeout=8)
+        html = r.text.lower()
+        is_easy = "easy apply" in html or "easy-apply" in html
+        _EASY_APPLY_CACHE[url] = is_easy
+        return is_easy
+    except Exception:
+        return False
 
 st.set_page_config(
     page_title="Job Tracker — Veena",
@@ -206,7 +227,7 @@ def color_posted_age(val: str) -> str:
     return ""
 
 
-def detect_apply_type(job: dict) -> str:
+def detect_apply_type(job: dict, live_check: bool = False) -> str:
     source = (job.get("source", "") or "").lower()
     tags = job.get("tags") or []
     if isinstance(tags, str):
@@ -216,7 +237,13 @@ def detect_apply_type(job: dict) -> str:
         except Exception:
             tags = [t.strip() for t in tags.split(",")]
     if source == "linkedin":
-        return "Easy Apply" if "easy_apply" in tags else "External Site"
+        # If already tagged from scraper, trust it
+        if "easy_apply" in tags:
+            return "Easy Apply"
+        # For job detail view, do a live page check for accuracy
+        if live_check and job.get("url"):
+            return "Easy Apply" if check_linkedin_easy_apply(job["url"]) else "External Site"
+        return "External Site"
     if source == "indeed":
         return "Quick Apply"
     return "External Site"
@@ -628,7 +655,7 @@ with main_tab:
 
     if job:
         job["job_type"]   = detect_job_type(job)
-        job["apply_type"] = detect_apply_type(job)
+        job["apply_type"] = detect_apply_type(job, live_check=True)
         job["posted"]     = posted_age(job)
 
         # Auto-mark as "reviewed" the first time a new job is viewed
