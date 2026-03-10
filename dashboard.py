@@ -846,22 +846,55 @@ with main_tab:
         ext_tab_label  = f"🌐 External Site  ({len(ext_jobs)})"
         easy_sub, ext_sub = st.tabs([easy_tab_label, ext_tab_label])
 
+        import streamlit.components.v1 as _components
+
+        def _scroll_to(anchor_id: str):
+            """Inject JS to scroll the Streamlit parent page to an anchor element."""
+            _components.html(
+                f"<script>window.parent.document.getElementById('{anchor_id}')"
+                f".scrollIntoView({{behavior:'smooth', block:'start'}});</script>",
+                height=0
+            )
+
         with easy_sub:
-            st.caption("These take 1–2 minutes to apply. LinkedIn Easy Apply and Indeed Quick Apply.")
+            st.caption("These take 1–2 minutes to apply. LinkedIn Easy Apply and Indeed Quick Apply. "
+                       "**Click any row** to jump to its detail below.")
             if easy_jobs:
-                st.dataframe(_make_styled(easy_jobs), width="stretch", height=320)
+                sel_easy = st.dataframe(
+                    _make_styled(easy_jobs),
+                    width="stretch", height=320,
+                    on_select="rerun",
+                    selection_mode="single-row",
+                    key="table_easy"
+                )
+                # Row click → sync to dropdown + scroll to detail
+                if sel_easy.selection.rows:
+                    st.session_state["_easy_idx"] = sel_easy.selection.rows[0]
+                    _scroll_to("detail-easy")
                 st.caption(f"{len(easy_jobs)} jobs")
                 st.divider()
+                st.markdown('<div id="detail-easy"></div>', unsafe_allow_html=True)
                 _render_job_detail(easy_jobs, "easy")
             else:
                 st.info("No Easy Apply / Quick Apply jobs right now. Run the scraper to refresh.")
 
         with ext_sub:
-            st.caption("These redirect to the company's own site — typically 15–30 min per application.")
+            st.caption("These redirect to the company's own site — typically 15–30 min per application. "
+                       "**Click any row** to jump to its detail below.")
             if ext_jobs:
-                st.dataframe(_make_styled(ext_jobs), width="stretch", height=320)
+                sel_ext = st.dataframe(
+                    _make_styled(ext_jobs),
+                    width="stretch", height=320,
+                    on_select="rerun",
+                    selection_mode="single-row",
+                    key="table_ext"
+                )
+                if sel_ext.selection.rows:
+                    st.session_state["_ext_idx"] = sel_ext.selection.rows[0]
+                    _scroll_to("detail-ext")
                 st.caption(f"{len(ext_jobs)} jobs")
                 st.divider()
+                st.markdown('<div id="detail-ext"></div>', unsafe_allow_html=True)
                 _render_job_detail(ext_jobs, "ext")
             else:
                 st.info("No External Site jobs right now.")
