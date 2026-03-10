@@ -216,7 +216,7 @@ def detect_apply_type(job: dict) -> str:
         except Exception:
             tags = [t.strip() for t in tags.split(",")]
     if source == "linkedin":
-        return "External Site" if "not_easy_apply" in tags else "Easy Apply"
+        return "Easy Apply" if "easy_apply" in tags else "External Site"
     if source == "indeed":
         return "Quick Apply"
     return "External Site"
@@ -270,7 +270,6 @@ with st.sidebar:
         ["Full Time", "Contract", "Unknown"],
         default=[]
     )
-    h1b_filter = st.selectbox("H-1B Sponsorship", ["All", "Yes", "No", "Unknown"])
     freshness_filter = st.selectbox(
         "Posted Within",
         ["All time", "10 minutes", "30 minutes", "1 hour", "3 hours", "5 hours",
@@ -464,14 +463,11 @@ with main_tab:
 
     for j in jobs:
         j["job_type"]   = detect_job_type(j)
-        j["h1b"]        = detect_h1b(j)
         j["apply_type"] = detect_apply_type(j)
         j["posted"]     = posted_age(j)
 
     if job_type_filter:
         jobs = [j for j in jobs if j["job_type"] in job_type_filter]
-    if h1b_filter != "All":
-        jobs = [j for j in jobs if j["h1b"] == h1b_filter]
 
     # Location filter — text search against job location field
     if location_filter.strip():
@@ -529,7 +525,7 @@ with main_tab:
 
     df = pd.DataFrame(jobs)
     display_cols = ["id", "title", "company", "posted", "applied?", "response?",
-                    "job_type", "h1b", "apply_type", "source", "salary", "score", "status"]
+                    "job_type", "apply_type", "source", "location", "salary", "status"]
     display_cols = [c for c in display_cols if c in df.columns]
     df_display = df[display_cols].copy()
 
@@ -576,8 +572,6 @@ with main_tab:
 
     styled = df_display.style\
         .apply(highlight_row, axis=1)\
-        .map(color_score,      subset=["score"])\
-        .map(color_h1b,        subset=["h1b"])\
         .map(color_apply_type, subset=["apply_type"])\
         .map(color_posted_age, subset=["posted"])\
         .map(color_applied,    subset=["applied?"])\
@@ -633,10 +627,9 @@ with main_tab:
     job = get_job_by_id(int(selected_id)) if selected_id else None
 
     if job:
-        job["job_type"]  = detect_job_type(job)
-        job["h1b"]       = detect_h1b(job)
+        job["job_type"]   = detect_job_type(job)
         job["apply_type"] = detect_apply_type(job)
-        job["posted"]    = posted_age(job)
+        job["posted"]     = posted_age(job)
 
         # Auto-mark as "reviewed" the first time a new job is viewed
         if job.get("status") == "new":
@@ -651,19 +644,13 @@ with main_tab:
             st.markdown(f"### {job['title']}")
             st.markdown(f"**{job['company']}** · {job['location']} · {job['source']}")
 
-            bc1, bc2, bc3, bc4, bc5, bc6 = st.columns(6)
+            bc1, bc2, bc3, bc4, bc5 = st.columns(5)
             bc1.info(f"**Posted:** {job['posted']}")
             bc2.info(f"**Type:** {job['job_type']}")
             bc3.info(f"**Apply:** {job['apply_type']}")
-            if job["h1b"] == "Yes":   bc4.success("H-1B: Sponsors")
-            elif job["h1b"] == "No":  bc4.error("H-1B: No Sponsor")
-            else:                     bc4.warning("H-1B: Unknown")
-            if job.get("salary"):     bc5.info(f"**Salary:** {job['salary']}")
+            if job.get("salary"):  bc4.info(f"**Salary:** {job['salary']}")
             applicants = job.get("num_applicants", "")
-            if applicants:            bc6.info(f"**Applicants:** {applicants}")
-
-            if job.get("score"):       st.markdown(f"**AI Score:** {job['score']}/10")
-            if job.get("score_reason"): st.info(f"AI reasoning: {job['score_reason']}")
+            if applicants:         bc5.info(f"**Applicants:** {applicants}")
 
             st.markdown("---")
             current_status = job.get("status", "new")
