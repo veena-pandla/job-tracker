@@ -178,18 +178,22 @@ def get_stats() -> dict:
 
 
 def delete_old_jobs(hours: int = 8) -> int:
-    """Delete jobs older than `hours` hours, keeping applied/interviewing/offer."""
+    """
+    Delete stale new/reviewed jobs older than `hours` hours.
+    - Keeps applied/interviewing/offer always.
+    - Keeps greenhouse/lever/remoteok jobs (company-posted internships stay weeks).
+    - Only uses date_found (when WE scraped it), not date_posted (original post date
+      which can be weeks old and would wrongly delete fresh internship imports).
+    """
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 DELETE FROM jobs
-                WHERE status NOT IN ('applied', 'interviewing', 'offer')
-                AND (
-                    date_found < %s
-                    OR (date_posted != '' AND date_posted IS NOT NULL AND date_posted < %s)
-                )
-            """, (cutoff, cutoff))
+                WHERE status NOT IN ('applied', 'interviewing', 'offer', 'reviewed')
+                AND source NOT IN ('greenhouse', 'lever', 'remoteok')
+                AND date_found < %s
+            """, (cutoff,))
             deleted = cur.rowcount
         conn.commit()
     if deleted:

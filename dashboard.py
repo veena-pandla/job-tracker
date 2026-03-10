@@ -358,30 +358,47 @@ with st.sidebar:
         st.success("Done!")
         st.code(result.stdout[-2000:] if result.stdout else result.stderr[-1000:])
 
-    if st.button("🎓 Scrape Internships Now", width="stretch"):
-        with st.spinner("Scraping company career pages + job boards for internships..."):
+    _INTERN_STAMP   = Path(__file__).parent / ".last_intern_scraped"
+    _INTERN_PROGRESS = Path(__file__).parent / ".intern_scrape_in_progress"
+
+    def _run_intern_scraper_bg():
+        try:
+            _INTERN_PROGRESS.write_text("running")
+            from scrape_company_internships import scrape_all_company_internships
+            from scrape_internships import scrape_all_intern_jobs
+            from database import insert_job
+            company_raw = scrape_all_company_internships()
+            board_raw   = scrape_all_intern_jobs()
+            for job in company_raw + board_raw:
+                insert_job(job)
+            _INTERN_STAMP.write_text(datetime.now(timezone.utc).isoformat())
+        except Exception:
+            pass
+        finally:
             try:
-                from scrape_company_internships import scrape_all_company_internships
-                from scrape_internships import scrape_all_intern_jobs
-                from database import insert_job
-                # Company career pages first (Greenhouse + Lever) — most legit internships
-                company_raw = scrape_all_company_internships()
-                # Job boards as supplement
-                board_raw   = scrape_all_intern_jobs()
-                all_raw     = company_raw + board_raw
-                added = 0
-                for job in all_raw:
-                    job_id = insert_job(job)
-                    if job_id is not None:
-                        added += 1
-                co_count = len(company_raw)
-                bd_count = len(board_raw)
-                st.success(
-                    f"✅ {co_count} from company career pages + {bd_count} from job boards "
-                    f"= {len(all_raw)} total, **{added} new** added. Check the 🎓 Internships tab!"
-                )
-            except Exception as e:
-                st.error(f"Scraper error: {e}")
+                _INTERN_PROGRESS.unlink()
+            except Exception:
+                pass
+
+    if _INTERN_PROGRESS.exists():
+        st.info("🔄 Internship scraper is running in the background — check back in ~2 min.", icon="🎓")
+    elif _INTERN_STAMP.exists():
+        try:
+            _last_intern = datetime.fromisoformat(_INTERN_STAMP.read_text().strip())
+            if _last_intern.tzinfo is None:
+                _last_intern = _last_intern.replace(tzinfo=timezone.utc)
+            _last_intern_et = _last_intern.astimezone(EASTERN)
+            st.caption(f"Last intern scrape: {_last_intern_et.strftime('%I:%M %p ET')}")
+        except Exception:
+            pass
+
+    if st.button("🎓 Scrape Internships Now", width="stretch"):
+        if not _INTERN_PROGRESS.exists():
+            t_intern = threading.Thread(target=_run_intern_scraper_bg, daemon=True)
+            t_intern.start()
+            st.success("🎓 Internship scraper started! It runs in the background (~2 min). Refresh the page when done.")
+        else:
+            st.info("Already running — please wait.")
 
     if st.button("Check Gmail Inbox", width="stretch"):
         from email_checker import check_gmail
