@@ -98,11 +98,7 @@ def scrape_all_jobs(keywords: list[str]) -> list[dict]:
                 tags = [keyword]
                 if job_type_raw:
                     tags.append(job_type_raw)
-                # Detect Easy Apply via LinkedIn API (runs locally during scrape)
-                site = str(row.get("site") or "").lower()
-                if site == "linkedin" and url:
-                    if _is_linkedin_easy_apply(url):
-                        tags.append("easy_apply")
+                # Easy Apply detection happens in dashboard via LinkedIn API
 
                 # Applicant count — jobspy may return this for some sources
                 num_applicants = ""
