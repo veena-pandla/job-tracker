@@ -3,12 +3,33 @@ Job scraper using JobSpy — scrapes LinkedIn, Indeed, Glassdoor, ZipRecruiter.
 Gets jobs posted in the last 24 hours with proper date_posted for every job.
 """
 import time
+import re
+import requests
 from datetime import datetime, timezone
 
 try:
     from jobspy import scrape_jobs
 except ImportError:
     raise ImportError("Run: pip install python-jobspy")
+
+
+def _is_linkedin_easy_apply(job_url: str) -> bool:
+    """
+    Check LinkedIn's jobs-guest API to detect Easy Apply.
+    'apply-link-offsite' in response = External Site; absent = Easy Apply.
+    Runs locally during scraping so Streamlit Cloud doesn't need to call LinkedIn.
+    """
+    try:
+        m = re.search(r"/view/(\d+)", job_url)
+        if not m:
+            return False
+        job_id = m.group(1)
+        api_url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"}
+        r = requests.get(api_url, headers=headers, timeout=6)
+        return "apply-link-offsite" not in r.text.lower()
+    except Exception:
+        return False
 
 
 def scrape_all_jobs(keywords: list[str]) -> list[dict]:
@@ -77,15 +98,11 @@ def scrape_all_jobs(keywords: list[str]) -> list[dict]:
                 tags = [keyword]
                 if job_type_raw:
                     tags.append(job_type_raw)
-                # Detect Easy Apply vs External Site
-                # Two signals:
-                #   1. is_easy_apply=True  → definitely Easy Apply
-                #   2. No job_url_direct   → Easy Apply (external jobs always have a redirect URL)
+                # Detect Easy Apply via LinkedIn API (runs locally during scrape)
                 site = str(row.get("site") or "").lower()
-                is_easy = row.get("is_easy_apply")
-                job_url_direct = str(row.get("job_url_direct") or "").strip()
-                if is_easy is True or (site == "linkedin" and not job_url_direct):
-                    tags.append("easy_apply")
+                if site == "linkedin" and url:
+                    if _is_linkedin_easy_apply(url):
+                        tags.append("easy_apply")
 
                 # Applicant count — jobspy may return this for some sources
                 num_applicants = ""
