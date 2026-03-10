@@ -358,6 +358,22 @@ with st.sidebar:
         st.success("Done!")
         st.code(result.stdout[-2000:] if result.stdout else result.stderr[-1000:])
 
+    if st.button("🎓 Scrape Internships Now", width="stretch"):
+        import subprocess, sys, os
+        intern_keywords = (
+            "machine learning intern,AI intern,data science intern,"
+            "software engineer intern,python intern,data engineer intern,"
+            "ML intern,AI research intern,backend intern,full stack intern"
+        )
+        with st.spinner("Scraping internship jobs..."):
+            env = {**os.environ, "JOB_KEYWORDS": intern_keywords}
+            result = subprocess.run(
+                [sys.executable, "main.py", "--scrape-only"],
+                capture_output=True, text=True, cwd=".", env=env
+            )
+        st.success("Done! Check the 🎓 Internships tab.")
+        st.code(result.stdout[-2000:] if result.stdout else result.stderr[-1000:])
+
     if st.button("Check Gmail Inbox", width="stretch"):
         from email_checker import check_gmail
         with st.spinner("Scanning Gmail for job responses..."):
@@ -430,6 +446,10 @@ with st.sidebar:
     st.divider()
     with st.expander("📋 Changelog", expanded=False):
         st.markdown("""
+**v1.8** — Mar 2026
+- 🎓 New Internships tab — scrapes and shows intern-specific jobs from all boards
+- 🎓 "Scrape Internships Now" button in sidebar
+
 **v1.7** — Mar 2026
 - 🔧 Fixed false-positive interview detections from emails
 - 🎨 Color legend added above job board table
@@ -466,7 +486,7 @@ with st.sidebar:
 
 
 # ── Tabs ─────────────────────────────────────────────────────────────────────────
-main_tab, tracker_tab = st.tabs(["🔍 Job Board", "📊 My Applications"])
+main_tab, tracker_tab, intern_tab = st.tabs(["🔍 Job Board", "📊 My Applications", "🎓 Internships"])
 
 
 # ══════════════════════════════════════════════════════════════════════════════════
@@ -891,3 +911,171 @@ with tracker_tab:
     else:
         st.markdown("<p style='color:#64748b; font-style:italic'>No pending applications.</p>",
                     unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════════
+# TAB 3: INTERNSHIPS
+# ══════════════════════════════════════════════════════════════════════════════════
+with intern_tab:
+    st.markdown(
+        "<div style='background:#f0fdf4; border-left:5px solid #16a34a; "
+        "padding:14px 20px; border-radius:8px; margin-bottom:16px;'>"
+        "<b style='color:#14532d; font-size:16px'>🎓 Internship Jobs</b><br>"
+        "<small style='color:#166534'>Jobs with 'intern' in the title, scraped from LinkedIn, Indeed, Glassdoor & ZipRecruiter. "
+        "Click <b>🎓 Scrape Internships Now</b> in the sidebar to fetch fresh listings.</small></div>",
+        unsafe_allow_html=True
+    )
+
+    all_jobs_intern = get_jobs(status=None, min_score=0)
+
+    # Filter to internship jobs — title contains "intern"
+    intern_jobs = [
+        j for j in all_jobs_intern
+        if "intern" in (j.get("title", "") or "").lower()
+    ]
+
+    # Compute display columns
+    for j in intern_jobs:
+        j["job_type"]   = detect_job_type(j)
+        j["apply_type"] = detect_apply_type(j)
+        j["posted"]     = posted_age(j)
+        j["applied?"]   = "Yes" if j.get("status") in ("applied", "interviewing", "offer") else "No"
+
+    # Sidebar-like filters inline
+    icol1, icol2, icol3 = st.columns(3)
+    with icol1:
+        intern_source = st.multiselect(
+            "Source", ["linkedin", "indeed", "glassdoor", "zip_recruiter"], default=[], key="intern_source"
+        )
+    with icol2:
+        intern_status = st.selectbox(
+            "Status", ["All", "new", "reviewed", "applied", "rejected"], key="intern_status"
+        )
+    with icol3:
+        intern_search = st.text_input("Search title / company", value="", key="intern_search")
+
+    if intern_source:
+        intern_jobs = [j for j in intern_jobs if j.get("source") in intern_source]
+    if intern_status != "All":
+        intern_jobs = [j for j in intern_jobs if j.get("status") == intern_status]
+    if intern_search.strip():
+        q = intern_search.strip().lower()
+        intern_jobs = [
+            j for j in intern_jobs
+            if q in (j.get("title", "") or "").lower()
+            or q in (j.get("company", "") or "").lower()
+        ]
+
+    # Sort newest first
+    intern_jobs.sort(key=lambda j: (_date_posted_dt(j), _date_found_dt(j)), reverse=True)
+
+    # Metrics
+    im1, im2, im3, im4 = st.columns(4)
+    im1.metric("Total Internships", len(intern_jobs))
+    im2.metric("LinkedIn", sum(1 for j in intern_jobs if j.get("source") == "linkedin"))
+    im3.metric("Indeed", sum(1 for j in intern_jobs if j.get("source") == "indeed"))
+    im4.metric("Applied", sum(1 for j in intern_jobs if j.get("status") in ("applied", "interviewing", "offer")))
+
+    if not intern_jobs:
+        st.info(
+            "No internship jobs found yet. Click **🎓 Scrape Internships Now** in the sidebar to fetch listings.",
+            icon="🎓"
+        )
+    else:
+        idf = pd.DataFrame(intern_jobs)
+        intern_display_cols = ["id", "title", "company", "posted", "applied?",
+                               "apply_type", "source", "location", "salary", "status"]
+        intern_display_cols = [c for c in intern_display_cols if c in idf.columns]
+        idf_display = idf[intern_display_cols].copy()
+
+        styled_intern = idf_display.style\
+            .apply(highlight_row, axis=1)\
+            .map(color_apply_type, subset=["apply_type"] if "apply_type" in idf_display.columns else [])\
+            .map(color_posted_age, subset=["posted"] if "posted" in idf_display.columns else [])\
+            .map(color_applied,    subset=["applied?"] if "applied?" in idf_display.columns else [])
+
+        st.dataframe(styled_intern, width="stretch", height=400)
+        st.caption(f"Showing {len(intern_jobs)} internship jobs")
+
+        st.divider()
+
+        # ── Internship Job Detail ────────────────────────────────────────────────
+        st.subheader("Internship Detail")
+
+        ikeys = [f"#{j['id']} — {j['title']} @ {j['company']}" for j in intern_jobs]
+        iids  = [j["id"] for j in intern_jobs]
+
+        if "intern_job_index" not in st.session_state:
+            st.session_state.intern_job_index = 0
+        st.session_state.intern_job_index = min(st.session_state.intern_job_index, len(ikeys) - 1)
+
+        def _on_intern_select():
+            st.session_state.intern_job_index = ikeys.index(st.session_state.intern_job_select)
+
+        inav_col, idrop_col = st.columns([1, 6])
+        with inav_col:
+            ibtn_prev, ibtn_next = st.columns(2)
+            if ibtn_prev.button("◀", key="intern_prev", help="Previous internship"):
+                st.session_state.intern_job_index = max(0, st.session_state.intern_job_index - 1)
+                st.session_state.intern_job_select = ikeys[st.session_state.intern_job_index]
+            if ibtn_next.button("▶", key="intern_next", help="Next internship"):
+                st.session_state.intern_job_index = min(len(ikeys) - 1, st.session_state.intern_job_index + 1)
+                st.session_state.intern_job_select = ikeys[st.session_state.intern_job_index]
+        with idrop_col:
+            st.selectbox("Select an internship to view details:", ikeys,
+                         index=st.session_state.intern_job_index, key="intern_job_select",
+                         on_change=_on_intern_select)
+
+        selected_intern_id = iids[st.session_state.intern_job_index]
+        ijob = get_job_by_id(int(selected_intern_id))
+
+        if ijob:
+            ijob["job_type"]   = detect_job_type(ijob)
+            ijob["apply_type"] = detect_apply_type(ijob, live_check=True)
+            ijob["posted"]     = posted_age(ijob)
+
+            icola, icolb = st.columns([2, 1])
+            with icola:
+                st.markdown(f"### {ijob['title']}")
+                st.markdown(f"**{ijob['company']}** · {ijob['location']} · {ijob['source']}")
+
+                ibc1, ibc2, ibc3, ibc4 = st.columns(4)
+                ibc1.info(f"**Posted:** {ijob['posted']}")
+                ibc2.info(f"**Type:** {ijob['job_type']}")
+                ibc3.info(f"**Apply:** {ijob['apply_type']}")
+                if ijob.get("salary"): ibc4.info(f"**Salary:** {ijob['salary']}")
+
+                st.markdown("---")
+                if ijob.get("status") not in ("applied", "interviewing", "offer"):
+                    if st.button("✅ I Applied — Mark as Applied", key="intern_mark_applied", width="stretch", type="primary"):
+                        mark_applied(ijob["id"], "Manually applied via Internships tab")
+                        st.session_state["_intern_open_url"] = ijob["url"]
+                        st.rerun()
+
+                    if st.session_state.get("_intern_open_url") == ijob["url"]:
+                        st.info("✅ Marked as Applied! Open the job page:")
+                        st.link_button("→ Open Job Page Now", ijob["url"], width="stretch")
+                        if st.button("Done, close link", key="intern_close_link"):
+                            st.session_state.pop("_intern_open_url", None)
+                            st.rerun()
+                    else:
+                        st.link_button("🚀 Go to Job Page", ijob["url"])
+                else:
+                    st.success(f"✅ Status: {ijob['status'].upper()}")
+                    st.link_button("🔗 View Job Page", ijob["url"])
+
+            with icolb:
+                st.markdown("**Update Status**")
+                istatuses = ["new", "reviewed", "applied", "interviewing", "offer", "rejected", "closed"]
+                icur_idx = istatuses.index(ijob.get("status", "new")) if ijob.get("status") in istatuses else 0
+                inew_status = st.selectbox("New status", istatuses, index=icur_idx,
+                                           key=f"intern_status_select_{ijob['id']}")
+                inotes = st.text_input("Notes", value=ijob.get("notes", "") or "", key="intern_notes")
+                if st.button("Save Status", key="intern_save_status"):
+                    update_status(ijob["id"], inew_status, inotes)
+                    st.success("Updated!")
+                    st.rerun()
+
+            with st.expander("📄 Job Description", expanded=True):
+                desc = ijob.get("description") or ""
+                st.text(desc if desc and desc.lower() != "nan" else "No description available")
