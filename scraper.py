@@ -77,9 +77,14 @@ def scrape_all_jobs(keywords: list[str]) -> list[dict]:
                 tags = [keyword]
                 if job_type_raw:
                     tags.append(job_type_raw)
-                # Capture LinkedIn Easy Apply flag from jobspy
-                # Only tag easy_apply when jobspy explicitly confirms it
-                if row.get("is_easy_apply") is True:
+                # Detect Easy Apply vs External Site
+                # Two signals:
+                #   1. is_easy_apply=True  → definitely Easy Apply
+                #   2. No job_url_direct   → Easy Apply (external jobs always have a redirect URL)
+                site = str(row.get("site") or "").lower()
+                is_easy = row.get("is_easy_apply")
+                job_url_direct = str(row.get("job_url_direct") or "").strip()
+                if is_easy is True or (site == "linkedin" and not job_url_direct):
                     tags.append("easy_apply")
 
                 # Applicant count — jobspy may return this for some sources
