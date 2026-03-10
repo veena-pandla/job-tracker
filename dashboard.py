@@ -588,229 +588,251 @@ with main_tab:
             if (now_utc - _date_found_dt(j)).total_seconds() / 60 <= max_minutes
         ]
 
+    # ── Exclude internship jobs — they live in the 🎓 Internships tab ────────────
+    _INTERN_WORDS = ("intern", "internship", "trainee", "co-op", "coop")
+    jobs = [
+        j for j in jobs
+        if not any(w in (j.get("title", "") or "").lower() for w in _INTERN_WORDS)
+        and j.get("source") not in ("greenhouse", "lever", "remoteok")
+    ]
+
     if not jobs:
-        st.info("No jobs found matching filters.")
-        st.stop()
-
-    # Add Applied? and Response? columns
-    for j in jobs:
-        j["applied?"] = "Yes" if j.get("status") in ("applied", "interviewing", "offer") else "No"
-        notes_text = (j.get("notes") or "").lower()
-        if j.get("status") == "offer":
-            j["response?"] = "Offer"
-        elif j.get("status") == "interviewing" or "interview" in notes_text:
-            j["response?"] = "Interview"
-        elif j.get("status") == "rejected" or any(w in notes_text for w in ["reject", "not moving", "unfortunately"]):
-            j["response?"] = "Rejected"
-        elif any(w in notes_text for w in ["response", "reply", "callback", "follow", "[auto]"]):
-            j["response?"] = "Reply"
-        else:
-            j["response?"] = "—"
-
-    df = pd.DataFrame(jobs)
-    display_cols = ["id", "title", "company", "posted", "applied?", "response?",
-                    "job_type", "apply_type", "source", "location", "salary", "status"]
-    display_cols = [c for c in display_cols if c in df.columns]
-    df_display = df[display_cols].copy()
-
-    def color_score(val):
-        if not val:
-            return ""
-        if val >= 8:
-            return "background-color: #bbf7d0; color: #14532d; font-weight: bold"
-        elif val >= 6:
-            return "background-color: #bfdbfe; color: #1e3a8a"
-        return "background-color: #fee2e2; color: #7f1d1d"
-
-    def color_h1b(val):
-        if val == "Yes": return "color: #15803d; font-weight: bold"
-        if val == "No":  return "color: #dc2626"
-        return ""
-
-    def color_apply_type(val):
-        if val == "Easy Apply":  return "color: #15803d; font-weight: bold"
-        if val == "Quick Apply": return "color: #1d4ed8; font-weight: bold"
-        return "color: #6b7280"
-
-    def color_applied(val):
-        if val == "Yes": return "color: #15803d; font-weight: bold"
-        return "color: #9ca3af"
-
-    def color_response(val):
-        if val == "Offer":     return "background-color: #bbf7d0; color: #14532d; font-weight: bold"
-        if val == "Interview": return "background-color: #bfdbfe; color: #1e3a8a; font-weight: bold"
-        if val == "Rejected":  return "background-color: #fee2e2; color: #7f1d1d"
-        if val == "Reply":     return "color: #92400e; font-weight: bold"
-        return "color: #9ca3af"
-
-    def highlight_row(row):
-        """Color entire row based on job status so it's instantly visible."""
-        status = row.get("status", "") if hasattr(row, "get") else ""
-        row_len = len(row)
-        if status == "offer":        return ["background-color: #bbf7d0"] * row_len  # green
-        if status == "interviewing": return ["background-color: #bfdbfe"] * row_len  # blue
-        if status == "applied":      return ["background-color: #fef9c3"] * row_len  # yellow
-        if status == "reviewed":     return ["background-color: #f3e8ff"] * row_len  # lavender
-        if status == "rejected":     return ["background-color: #ffe4e6"] * row_len  # pink/red
-        return [""] * row_len
-
-    styled = df_display.style\
-        .apply(highlight_row, axis=1)\
-        .map(color_apply_type, subset=["apply_type"])\
-        .map(color_posted_age, subset=["posted"])\
-        .map(color_applied,    subset=["applied?"])\
-        .map(color_response,   subset=["response?"])
-
-    st.markdown(
-        "<small>"
-        "<span style='background:#fef9c3;padding:2px 7px;border-radius:3px;margin-right:6px'>🟡 Applied</span>"
-        "<span style='background:#bfdbfe;padding:2px 7px;border-radius:3px;margin-right:6px'>🔵 Interviewing</span>"
-        "<span style='background:#bbf7d0;padding:2px 7px;border-radius:3px;margin-right:6px'>🟢 Offer</span>"
-        "<span style='background:#f3e8ff;padding:2px 7px;border-radius:3px;margin-right:6px'>🟣 Reviewed</span>"
-        "<span style='background:#ffe4e6;padding:2px 7px;border-radius:3px'>🔴 Rejected</span>"
-        "</small>",
-        unsafe_allow_html=True
-    )
-    st.dataframe(styled, width="stretch", height=400)
-    st.caption(f"Showing {len(jobs)} jobs")
-
-    st.divider()
-
-    # ── Job Detail ──────────────────────────────────────────────────────────────
-    st.subheader("Job Detail")
-
-    job_keys = [f"#{j['id']} — {j['title']} @ {j['company']}" for j in jobs]
-    job_ids  = [j['id'] for j in jobs]
-
-    if job_keys:
-        if "job_index" not in st.session_state:
-            st.session_state.job_index = 0
-        st.session_state.job_index = min(st.session_state.job_index, len(job_keys) - 1)
-
-        def _on_select():
-            st.session_state.job_index = job_keys.index(st.session_state.job_select)
-
-        nav_col, drop_col = st.columns([1, 6])
-        with nav_col:
-            btn_prev, btn_next = st.columns(2)
-            if btn_prev.button("◀", help="Previous job"):
-                st.session_state.job_index = max(0, st.session_state.job_index - 1)
-                st.session_state.job_select = job_keys[st.session_state.job_index]
-            if btn_next.button("▶", help="Next job"):
-                st.session_state.job_index = min(len(job_keys) - 1, st.session_state.job_index + 1)
-                st.session_state.job_select = job_keys[st.session_state.job_index]
-        with drop_col:
-            st.selectbox("Select a job to view details:", job_keys,
-                         index=st.session_state.job_index, key="job_select",
-                         on_change=_on_select)
-
-        selected_id = job_ids[st.session_state.job_index]
+        st.info("No jobs found matching filters. Internship jobs are in the 🎓 Internships tab.")
     else:
-        selected_id = None
-
-    job = get_job_by_id(int(selected_id)) if selected_id else None
-
-    if job:
-        job["job_type"]   = detect_job_type(job)
-        job["apply_type"] = detect_apply_type(job, live_check=True)
-        job["posted"]     = posted_age(job)
-
-        # Auto-mark as "reviewed" the first time a new job is viewed
-        if job.get("status") == "new":
-            _last_reviewed = st.session_state.get("_last_reviewed_id")
-            if _last_reviewed != job["id"]:
-                update_status(job["id"], "reviewed", job.get("notes", "") or "")
-                st.session_state["_last_reviewed_id"] = job["id"]
-                job["status"] = "reviewed"  # update local copy so UI reflects it
-
-        col_a, col_b = st.columns([2, 1])
-        with col_a:
-            st.markdown(f"### {job['title']}")
-            st.markdown(f"**{job['company']}** · {job['location']} · {job['source']}")
-
-            bc1, bc2, bc3, bc4, bc5 = st.columns(5)
-            bc1.info(f"**Posted:** {job['posted']}")
-            bc2.info(f"**Type:** {job['job_type']}")
-            bc3.info(f"**Apply:** {job['apply_type']}")
-            if job.get("salary"):  bc4.info(f"**Salary:** {job['salary']}")
-            applicants = job.get("num_applicants", "")
-            if applicants:         bc5.info(f"**Applicants:** {applicants}")
-
-            st.markdown("---")
-            current_status = job.get("status", "new")
-            apply_label = "Apply via Easy Apply (LinkedIn)" if job["apply_type"] == "Easy Apply" else \
-                          "Apply via Quick Apply (Indeed)"  if job["apply_type"] == "Quick Apply"  else \
-                          "Go to Job Page & Apply"
-
-            if current_status not in ("applied", "interviewing", "offer"):
-                # Single button: marks as applied AND shows the link to click
-                if st.button(f"🚀 {apply_label} — Mark as Applied", width="stretch", type="primary"):
-                    mark_applied(job["id"], "Applied via dashboard")
-                    st.session_state["_open_url"] = job["url"]
-                    st.rerun()
-                st.caption("Click above to mark as applied, then open the job link that appears.")
+        # Add Applied? and Response? columns
+        for j in jobs:
+            j["applied?"] = "Yes" if j.get("status") in ("applied", "interviewing", "offer") else "No"
+            notes_text = (j.get("notes") or "").lower()
+            if j.get("status") == "offer":
+                j["response?"] = "Offer"
+            elif j.get("status") == "interviewing" or "interview" in notes_text:
+                j["response?"] = "Interview"
+            elif j.get("status") == "rejected" or any(w in notes_text for w in ["reject", "not moving", "unfortunately"]):
+                j["response?"] = "Rejected"
+            elif any(w in notes_text for w in ["response", "reply", "callback", "follow", "[auto]"]):
+                j["response?"] = "Reply"
             else:
-                st.success(f"✅ Status: {current_status.upper()}")
-                st.link_button("🔗 View Job Page", job["url"])
+                j["response?"] = "—"
 
-            # Show job URL link after marking applied (persists until next job selected)
-            if st.session_state.get("_open_url") == job["url"]:
-                st.info("✅ Marked as Applied! Now open the job page:")
-                st.link_button("→ Open Job Page Now", job["url"], width="stretch")
-                if st.button("Done, close link", key="close_link"):
-                    st.session_state.pop("_open_url", None)
+        def color_score(val):
+            if not val: return ""
+            if val >= 8: return "background-color: #bbf7d0; color: #14532d; font-weight: bold"
+            if val >= 6: return "background-color: #bfdbfe; color: #1e3a8a"
+            return "background-color: #fee2e2; color: #7f1d1d"
+
+        def color_apply_type(val):
+            if val == "Easy Apply":  return "color: #15803d; font-weight: bold"
+            if val == "Quick Apply": return "color: #1d4ed8; font-weight: bold"
+            return "color: #6b7280"
+
+        def color_applied(val):
+            if val == "Yes": return "color: #15803d; font-weight: bold"
+            return "color: #9ca3af"
+
+        def color_response(val):
+            if val == "Offer":     return "background-color: #bbf7d0; color: #14532d; font-weight: bold"
+            if val == "Interview": return "background-color: #bfdbfe; color: #1e3a8a; font-weight: bold"
+            if val == "Rejected":  return "background-color: #fee2e2; color: #7f1d1d"
+            if val == "Reply":     return "color: #92400e; font-weight: bold"
+            return "color: #9ca3af"
+
+        def highlight_row(row):
+            status = row.get("status", "") if hasattr(row, "get") else ""
+            n = len(row)
+            if status == "offer":        return ["background-color: #bbf7d0"] * n
+            if status == "interviewing": return ["background-color: #bfdbfe"] * n
+            if status == "applied":      return ["background-color: #fef9c3"] * n
+            if status == "reviewed":     return ["background-color: #f3e8ff"] * n
+            if status == "rejected":     return ["background-color: #ffe4e6"] * n
+            return [""] * n
+
+        _display_cols = ["id", "title", "company", "posted", "applied?", "response?",
+                         "job_type", "apply_type", "source", "location", "salary", "status"]
+
+        def _make_styled(job_list):
+            _df = pd.DataFrame(job_list)
+            _cols = [c for c in _display_cols if c in _df.columns]
+            _dfd  = _df[_cols].copy()
+            return _dfd.style\
+                .apply(highlight_row, axis=1)\
+                .map(color_apply_type, subset=["apply_type"] if "apply_type" in _dfd.columns else [])\
+                .map(color_posted_age, subset=["posted"]     if "posted"     in _dfd.columns else [])\
+                .map(color_applied,    subset=["applied?"]   if "applied?"   in _dfd.columns else [])\
+                .map(color_response,   subset=["response?"]  if "response?"  in _dfd.columns else [])
+
+        def _render_job_detail(job_list, key_prefix):
+            """Render the dropdown + full detail panel for a given job list."""
+            if not job_list:
+                st.info("No jobs in this category.")
+                return
+
+            keys = [f"#{j['id']} — {j['title']} @ {j['company']}" for j in job_list]
+            ids  = [j["id"] for j in job_list]
+
+            idx_key = f"_{key_prefix}_idx"
+            sel_key = f"_{key_prefix}_sel"
+            if idx_key not in st.session_state:
+                st.session_state[idx_key] = 0
+            st.session_state[idx_key] = min(st.session_state[idx_key], len(keys) - 1)
+
+            def _on_change():
+                st.session_state[idx_key] = keys.index(st.session_state[sel_key])
+
+            nav_col, drop_col = st.columns([1, 6])
+            with nav_col:
+                p_col, n_col = st.columns(2)
+                if p_col.button("◀", key=f"{key_prefix}_prev"):
+                    st.session_state[idx_key] = max(0, st.session_state[idx_key] - 1)
+                    st.session_state[sel_key] = keys[st.session_state[idx_key]]
+                if n_col.button("▶", key=f"{key_prefix}_next"):
+                    st.session_state[idx_key] = min(len(keys) - 1, st.session_state[idx_key] + 1)
+                    st.session_state[sel_key] = keys[st.session_state[idx_key]]
+            with drop_col:
+                st.selectbox("Select a job:", keys,
+                             index=st.session_state[idx_key],
+                             key=sel_key, on_change=_on_change)
+
+            job = get_job_by_id(int(ids[st.session_state[idx_key]]))
+            if not job:
+                st.warning("Job not found.")
+                return
+
+            job["job_type"]   = detect_job_type(job)
+            job["apply_type"] = detect_apply_type(job, live_check=True)
+            job["posted"]     = posted_age(job)
+
+            if job.get("status") == "new":
+                _lr = st.session_state.get("_last_reviewed_id")
+                if _lr != job["id"]:
+                    update_status(job["id"], "reviewed", job.get("notes", "") or "")
+                    st.session_state["_last_reviewed_id"] = job["id"]
+                    job["status"] = "reviewed"
+
+            col_a, col_b = st.columns([2, 1])
+            with col_a:
+                st.markdown(f"### {job['title']}")
+                st.markdown(f"**{job['company']}** · {job['location']} · {job['source']}")
+                bc1, bc2, bc3, bc4, bc5 = st.columns(5)
+                bc1.info(f"**Posted:** {job['posted']}")
+                bc2.info(f"**Type:** {job['job_type']}")
+                bc3.info(f"**Apply:** {job['apply_type']}")
+                if job.get("salary"):           bc4.info(f"**Salary:** {job['salary']}")
+                if job.get("num_applicants"):   bc5.info(f"**Applicants:** {job['num_applicants']}")
+
+                st.markdown("---")
+                cur_status = job.get("status", "new")
+                apply_label = "Apply via Easy Apply (LinkedIn)" if job["apply_type"] == "Easy Apply" else \
+                              "Apply via Quick Apply (Indeed)"  if job["apply_type"] == "Quick Apply"  else \
+                              "Go to Job Page & Apply"
+
+                if cur_status not in ("applied", "interviewing", "offer"):
+                    if st.button(f"🚀 {apply_label} — Mark as Applied",
+                                 key=f"{key_prefix}_apply_{job['id']}", width="stretch", type="primary"):
+                        mark_applied(job["id"], "Applied via dashboard")
+                        st.session_state[f"_open_url_{key_prefix}"] = job["url"]
+                        st.rerun()
+                    st.caption("Click above to mark as applied, then open the link that appears.")
+                else:
+                    st.success(f"✅ Status: {cur_status.upper()}")
+                    st.link_button("🔗 View Job Page", job["url"])
+
+                open_url_key = f"_open_url_{key_prefix}"
+                if st.session_state.get(open_url_key) == job["url"]:
+                    st.info("✅ Marked as Applied! Open the job page:")
+                    st.link_button("→ Open Job Page Now", job["url"], width="stretch")
+                    if st.button("Done, close link", key=f"{key_prefix}_close_{job['id']}"):
+                        st.session_state.pop(open_url_key, None)
+                        st.rerun()
+
+            with col_b:
+                st.markdown("**Update Status**")
+                statuses = ["new", "reviewed", "applied", "interviewing", "offer", "rejected", "closed"]
+                cur_idx = statuses.index(job.get("status", "new")) if job.get("status") in statuses else 0
+                new_status = st.selectbox("New status", statuses, index=cur_idx,
+                                          key=f"status_sel_{key_prefix}_{job['id']}")
+                notes = st.text_input("Notes", value=job.get("notes", "") or "",
+                                      key=f"notes_{key_prefix}_{job['id']}")
+                if st.button("Save Status", key=f"save_{key_prefix}_{job['id']}"):
+                    update_status(job["id"], new_status, notes)
+                    st.success("Updated!")
                     st.rerun()
 
-        with col_b:
-            st.markdown("**Update Status**")
-            statuses = ["new", "reviewed", "applied", "interviewing", "offer", "rejected", "closed"]
-            cur_idx = statuses.index(job.get("status", "new")) if job.get("status") in statuses else 0
-            new_status = st.selectbox("New status", statuses,
-                                      index=cur_idx,
-                                      key=f"status_select_{job['id']}")
-            notes = st.text_input("Notes", value=job.get("notes", "") or "")
-            if st.button("Save Status"):
-                update_status(job["id"], new_status, notes)
-                st.success("Updated!")
-                st.rerun()
+            dtabs = st.tabs(["Description", "Cover Letter", "Resume"])
+            with dtabs[0]:
+                desc = job.get("description") or ""
+                st.text(desc if desc and desc.lower() != "nan" else "No description available")
+            with dtabs[1]:
+                cover = job.get("cover_letter", "")
+                if cover:
+                    st.text_area("Cover Letter", value=cover, height=300,
+                                 key=f"cl_{key_prefix}_{job['id']}")
+                    if st.button("Copy to clipboard", key=f"cl_copy_{key_prefix}_{job['id']}"):
+                        st.code(cover)
+                else:
+                    st.info("No cover letter generated yet.")
+            with dtabs[2]:
+                from ai_engine import generate_tailored_resume
+                from resume_builder import build_resume_docx
+                st.markdown("Generate a tailored ATS-optimized resume for this specific job.")
+                if st.button("Generate Tailored Resume", key=f"res_{key_prefix}_{job['id']}", width="stretch"):
+                    with st.spinner("AI is tailoring your resume..."):
+                        tailored     = generate_tailored_resume(job)
+                        resume_bytes = build_resume_docx(job, tailored)
+                    st.success("Resume ready!")
+                    safe_co    = "".join(c for c in (job.get("company", "co") or "") if c.isalnum() or c in "-_")
+                    safe_title = "".join(c for c in (job.get("title",   "role") or "") if c.isalnum() or c in "-_")
+                    st.download_button(label="⬇ Download Resume (.docx)",
+                                       data=resume_bytes,
+                                       file_name=f"Resume_{safe_co}_{safe_title}.docx",
+                                       mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                       key=f"dl_res_{key_prefix}_{job['id']}", width="stretch")
+                    if tailored.get("extra_bullets"):
+                        with st.expander("Preview: New ATS Bullets"):
+                            for b in tailored["extra_bullets"]:
+                                st.markdown(f"• {b}")
+                    if tailored.get("priority_skills"):
+                        with st.expander("Preview: Skills Reordered"):
+                            st.write("  •  ".join(tailored["priority_skills"]) + "  (+ all your other skills)")
 
-        tabs = st.tabs(["Description", "Cover Letter", "Resume"])
-        with tabs[0]:
-            desc = job.get("description") or ""
-            st.text(desc if desc and desc.lower() != "nan" else "No description available")
-        with tabs[1]:
-            cover = job.get("cover_letter", "")
-            if cover:
-                st.text_area("Cover Letter", value=cover, height=300, key="cl_view")
-                if st.button("Copy to clipboard"):
-                    st.code(cover)
+        # ── Split by apply type ───────────────────────────────────────────────
+        easy_jobs = [j for j in jobs if j.get("apply_type") in ("Easy Apply", "Quick Apply")]
+        ext_jobs  = [j for j in jobs if j.get("apply_type") == "External Site"]
+
+        # Color legend
+        st.markdown(
+            "<small>"
+            "<span style='background:#fef9c3;padding:2px 7px;border-radius:3px;margin-right:6px'>🟡 Applied</span>"
+            "<span style='background:#bfdbfe;padding:2px 7px;border-radius:3px;margin-right:6px'>🔵 Interviewing</span>"
+            "<span style='background:#bbf7d0;padding:2px 7px;border-radius:3px;margin-right:6px'>🟢 Offer</span>"
+            "<span style='background:#f3e8ff;padding:2px 7px;border-radius:3px;margin-right:6px'>🟣 Reviewed</span>"
+            "<span style='background:#ffe4e6;padding:2px 7px;border-radius:3px'>🔴 Rejected</span>"
+            "</small>",
+            unsafe_allow_html=True
+        )
+
+        easy_tab_label = f"⚡ Easy / Quick Apply  ({len(easy_jobs)})"
+        ext_tab_label  = f"🌐 External Site  ({len(ext_jobs)})"
+        easy_sub, ext_sub = st.tabs([easy_tab_label, ext_tab_label])
+
+        with easy_sub:
+            st.caption("These take 1–2 minutes to apply. LinkedIn Easy Apply and Indeed Quick Apply.")
+            if easy_jobs:
+                st.dataframe(_make_styled(easy_jobs), width="stretch", height=320)
+                st.caption(f"{len(easy_jobs)} jobs")
+                st.divider()
+                _render_job_detail(easy_jobs, "easy")
             else:
-                st.info("No cover letter generated yet.")
-        with tabs[2]:
-            from ai_engine import generate_tailored_resume
-            from resume_builder import build_resume_docx
-            st.markdown("Generate a tailored ATS-optimized resume for this specific job.")
-            if st.button("Generate Tailored Resume", width="stretch"):
-                with st.spinner("AI is tailoring your resume..."):
-                    tailored     = generate_tailored_resume(job)
-                    resume_bytes = build_resume_docx(job, tailored)
-                st.success("Resume ready!")
-                safe_co    = "".join(c for c in job.get("company", "company") if c.isalnum() or c in "-_")
-                safe_title = "".join(c for c in job.get("title", "role")    if c.isalnum() or c in "-_")
-                st.download_button(label="⬇ Download Resume (.docx)",
-                                   data=resume_bytes,
-                                   file_name=f"Resume_{safe_co}_{safe_title}.docx",
-                                   mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                   width="stretch")
-                if tailored.get("extra_bullets"):
-                    with st.expander("Preview: New ATS Bullets"):
-                        for b in tailored["extra_bullets"]:
-                            st.markdown(f"• {b}")
-                if tailored.get("priority_skills"):
-                    with st.expander("Preview: Skills Reordered"):
-                        st.write("  •  ".join(tailored["priority_skills"]) + "  (+ all your other skills)")
-    else:
-        st.warning("Job not found.")
+                st.info("No Easy Apply / Quick Apply jobs right now. Run the scraper to refresh.")
+
+        with ext_sub:
+            st.caption("These redirect to the company's own site — typically 15–30 min per application.")
+            if ext_jobs:
+                st.dataframe(_make_styled(ext_jobs), width="stretch", height=320)
+                st.caption(f"{len(ext_jobs)} jobs")
+                st.divider()
+                _render_job_detail(ext_jobs, "ext")
+            else:
+                st.info("No External Site jobs right now.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════════
