@@ -82,16 +82,30 @@ def scrape_all_jobs(keywords: list[str]) -> list[dict]:
                 if row.get("is_easy_apply") is False:
                     tags.append("not_easy_apply")
 
+                # Applicant count — jobspy may return this for some sources
+                num_applicants = ""
+                for field in ["num_applicants", "applicants", "num_urgent_words"]:
+                    val = row.get(field)
+                    if val is not None:
+                        try:
+                            import pandas as pd
+                            if not pd.isna(val):
+                                num_applicants = str(int(float(val)))
+                                break
+                        except Exception:
+                            pass
+
                 all_jobs.append({
-                    "title":       str(row.get("title", "") or ""),
-                    "company":     str(row.get("company", "") or ""),
-                    "url":         url,
-                    "location":    str(row.get("location", "Remote") or "Remote"),
-                    "salary":      salary,
-                    "description": str(row.get("description", "") or "")[:3000],
-                    "tags":        tags,
-                    "source":      str(row.get("site", "") or ""),
-                    "date_posted": date_posted,
+                    "title":          str(row.get("title", "") or ""),
+                    "company":        str(row.get("company", "") or ""),
+                    "url":            url,
+                    "location":       str(row.get("location", "Remote") or "Remote"),
+                    "salary":         salary,
+                    "description":    str(row.get("description", "") or "")[:3000],
+                    "tags":           tags,
+                    "source":         str(row.get("site", "") or ""),
+                    "date_posted":    date_posted,
+                    "num_applicants": num_applicants,
                 })
 
             print(f"[JobSpy] '{keyword}' -> {len(df)} jobs found")

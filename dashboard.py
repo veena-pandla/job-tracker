@@ -126,34 +126,78 @@ def detect_h1b(job: dict) -> str:
 
 
 def posted_age(job: dict) -> str:
-    # Use only date_posted (from LinkedIn via jobspy) — date_found is when WE scraped it
+    """
+    Show precise time using date_found (exact scrape timestamp) for minutes/hours.
+    Fall back to date_posted (date-only from jobspy) for day-level display.
+    """
+    now_utc = datetime.now(timezone.utc)
+
+    # Step 1: try date_posted — if it has a real time component (not midnight), use it
     date_str = job.get("date_posted", "")
-    if not date_str or str(date_str).lower() in ("nat", "none", "nan"):
-        return "Unknown"
-    try:
-        dt = datetime.fromisoformat(str(date_str).replace("Z", "+00:00"))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        # jobspy gives date-only (no time), so compare by calendar date in ET
-        # This matches LinkedIn's "posted X days ago" display
-        now_et = datetime.now(EASTERN)
-        dt_date = dt.astimezone(EASTERN).date()
-        diff_days = (now_et.date() - dt_date).days
-        if diff_days == 0:
-            return "Today"
-        if diff_days == 1:
-            return "Yesterday"
-        if diff_days < 7:
-            return f"{diff_days}d ago"
-        return f"{diff_days // 7}w ago"
-    except Exception:
-        return "Unknown"
+    if date_str and str(date_str).lower() not in ("nat", "none", "nan"):
+        try:
+            dt = datetime.fromisoformat(str(date_str).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            if dt.hour != 0 or dt.minute != 0:  # has real time info
+                diff = now_utc - dt
+                mins = int(diff.total_seconds() / 60)
+                if mins < 60:
+                    return f"{mins}m ago"
+                hrs = int(diff.total_seconds() / 3600)
+                if hrs < 24:
+                    return f"{hrs}h ago"
+        except Exception:
+            pass
+
+    # Step 2: use date_found (exact moment we scraped it) for hour/minute precision
+    found_str = job.get("date_found", "")
+    if found_str and str(found_str).lower() not in ("nat", "none", "nan"):
+        try:
+            dt = datetime.fromisoformat(str(found_str).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            diff = now_utc - dt
+            mins = int(diff.total_seconds() / 60)
+            if mins < 60:
+                return f"{mins}m ago"
+            hrs = int(diff.total_seconds() / 3600)
+            if hrs < 48:
+                return f"{hrs}h ago"
+        except Exception:
+            pass
+
+    # Step 3: fall back to date_posted day-level (Today / Yesterday / Xd ago)
+    if date_str and str(date_str).lower() not in ("nat", "none", "nan"):
+        try:
+            dt = datetime.fromisoformat(str(date_str).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            now_et = datetime.now(EASTERN)
+            dt_date = dt.astimezone(EASTERN).date()
+            diff_days = (now_et.date() - dt_date).days
+            if diff_days == 0:
+                return "Today"
+            if diff_days == 1:
+                return "Yesterday"
+            if diff_days < 7:
+                return f"{diff_days}d ago"
+            return f"{diff_days // 7}w ago"
+        except Exception:
+            pass
+
+    return "Unknown"
 
 
 def color_posted_age(val: str) -> str:
-    if val == "Today":
+    if "m ago" in val:  # minutes ago — very fresh
         return "color: #15803d; font-weight: bold"
-    if val == "Yesterday":
+    if "h ago" in val:
+        hrs = int(val.replace("h ago", "").strip() or 99)
+        if hrs <= 6:
+            return "color: #15803d; font-weight: bold"
+        return "color: #1d4ed8"
+    if val in ("Today", "Yesterday"):
         return "color: #1d4ed8"
     if "d ago" in val:
         days = int(val.replace("d ago", "").strip() or 99)
@@ -608,7 +652,7 @@ with main_tab:
             st.markdown(f"### {job['title']}")
             st.markdown(f"**{job['company']}** · {job['location']} · {job['source']}")
 
-            bc1, bc2, bc3, bc4, bc5 = st.columns(5)
+            bc1, bc2, bc3, bc4, bc5, bc6 = st.columns(6)
             bc1.info(f"**Posted:** {job['posted']}")
             bc2.info(f"**Type:** {job['job_type']}")
             bc3.info(f"**Apply:** {job['apply_type']}")
@@ -616,6 +660,8 @@ with main_tab:
             elif job["h1b"] == "No":  bc4.error("H-1B: No Sponsor")
             else:                     bc4.warning("H-1B: Unknown")
             if job.get("salary"):     bc5.info(f"**Salary:** {job['salary']}")
+            applicants = job.get("num_applicants", "")
+            if applicants:            bc6.info(f"**Applicants:** {applicants}")
 
             if job.get("score"):       st.markdown(f"**AI Score:** {job['score']}/10")
             if job.get("score_reason"): st.info(f"AI reasoning: {job['score_reason']}")
