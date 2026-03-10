@@ -217,10 +217,9 @@ with st.sidebar:
         "Status",
         ["All", "new", "reviewed", "applied", "interviewing", "offer", "rejected", "closed"]
     )
-    min_score = st.slider("Min AI Score", 0.0, 10.0, 0.0, 0.5)
     source_filter = st.multiselect(
         "Source",
-        ["linkedin", "indeed", "remoteok", "weworkremotely"],
+        ["linkedin", "indeed", "remoteok", "weworkremotely", "google"],
         default=[]
     )
     job_type_filter = st.multiselect(
@@ -230,10 +229,12 @@ with st.sidebar:
     )
     h1b_filter = st.selectbox("H-1B Sponsorship", ["All", "Yes", "No", "Unknown"])
     freshness_filter = st.selectbox(
-        "Scraped",
-        ["All time", "Today", "Last 2 days", "Last 7 days"],
+        "Posted Within",
+        ["All time", "10 minutes", "30 minutes", "1 hour", "3 hours", "5 hours",
+         "Today", "2 days", "This week"],
         index=0
     )
+    location_filter = st.text_input("Location (e.g. USA, Remote, New York)", value="")
 
     st.divider()
 
@@ -413,21 +414,26 @@ with main_tab:
 
     # Load and filter jobs
     status_param = None if status_filter == "All" else status_filter
-    jobs = get_jobs(status=status_param, min_score=min_score)
+    jobs = get_jobs(status=status_param, min_score=0)
 
     if source_filter:
         jobs = [j for j in jobs if j.get("source") in source_filter]
 
     for j in jobs:
-        j["job_type"]  = detect_job_type(j)
-        j["h1b"]       = detect_h1b(j)
+        j["job_type"]   = detect_job_type(j)
+        j["h1b"]        = detect_h1b(j)
         j["apply_type"] = detect_apply_type(j)
-        j["posted"]    = posted_age(j)
+        j["posted"]     = posted_age(j)
 
     if job_type_filter:
         jobs = [j for j in jobs if j["job_type"] in job_type_filter]
     if h1b_filter != "All":
         jobs = [j for j in jobs if j["h1b"] == h1b_filter]
+
+    # Location filter — text search against job location field
+    if location_filter.strip():
+        loc_q = location_filter.strip().lower()
+        jobs = [j for j in jobs if loc_q in (j.get("location") or "").lower()]
 
     # Auto-remove NEW jobs posted more than 8 hours ago (keep reviewed/applied always)
     now_utc = datetime.now(timezone.utc)
@@ -441,11 +447,23 @@ with main_tab:
     # Sort by date_posted newest first
     jobs.sort(key=lambda j: (_date_posted_dt(j), _date_found_dt(j)), reverse=True)
 
+    # Freshness filter — based on date_found (when we scraped it)
     if freshness_filter != "All time":
-        days_map = {"Today": 0, "Last 2 days": 1, "Last 7 days": 6}
-        max_days = days_map[freshness_filter]
-        today = datetime.now(timezone.utc).date()
-        jobs = [j for j in jobs if (today - _date_found_dt(j).date()).days <= max_days]
+        minutes_map = {
+            "10 minutes": 10,
+            "30 minutes": 30,
+            "1 hour":     60,
+            "3 hours":    180,
+            "5 hours":    300,
+            "Today":      1440,
+            "2 days":     2880,
+            "This week":  10080,
+        }
+        max_minutes = minutes_map.get(freshness_filter, 99999)
+        jobs = [
+            j for j in jobs
+            if (now_utc - _date_found_dt(j)).total_seconds() / 60 <= max_minutes
+        ]
 
     if not jobs:
         st.info("No jobs found matching filters.")
