@@ -201,5 +201,29 @@ def delete_old_jobs(hours: int = 8) -> int:
     return deleted
 
 
+def toggle_easy_apply_tag(job_id: int, make_easy: bool):
+    """
+    Add or remove the 'easy_apply' tag for a LinkedIn job.
+    Called when user manually corrects the Easy Apply detection.
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT tags FROM jobs WHERE id=%s", (job_id,))
+            row = cur.fetchone()
+            if not row:
+                return
+            try:
+                tags = json.loads(row[0] or "[]")
+            except Exception:
+                tags = []
+            if make_easy and "easy_apply" not in tags:
+                tags.append("easy_apply")
+            elif not make_easy and "easy_apply" in tags:
+                tags.remove("easy_apply")
+            cur.execute("UPDATE jobs SET tags=%s WHERE id=%s",
+                        (json.dumps(tags), job_id))
+        conn.commit()
+
+
 # Initialize on import
 init_db()

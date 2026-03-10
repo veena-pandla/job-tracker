@@ -23,25 +23,47 @@ _EASY_APPLY_CACHE: dict[str, bool] = {}
 
 def check_linkedin_easy_apply(url: str) -> bool:
     """
-    Use LinkedIn's jobs-guest API to detect Easy Apply.
+    Detect Easy Apply via LinkedIn's jobs-guest API.
     Signal: 'apply-link-offsite' in response = External Site; absent = Easy Apply.
+
+    Two-step approach:
+      1. Direct request (works locally, blocked on Streamlit Cloud AWS IPs)
+      2. Fallback through allorigins.win public proxy (different IP, not blocked by LinkedIn)
     """
     if url in _EASY_APPLY_CACHE:
         return _EASY_APPLY_CACHE[url]
     try:
         import re
+        from urllib.parse import quote
         job_id_match = re.search(r"/view/(\d+)", url)
         if not job_id_match:
             return False
         job_id = job_id_match.group(1)
         api_url = f"https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"}
-        r = requests.get(api_url, headers=headers, timeout=8)
-        is_easy = "apply-link-offsite" not in r.text.lower()
-        _EASY_APPLY_CACHE[url] = is_easy
-        return is_easy
+
+        # Step 1: direct request (fast, works locally)
+        try:
+            r = requests.get(api_url, headers=headers, timeout=5)
+            if r.status_code == 200 and len(r.text) > 500:
+                is_easy = "apply-link-offsite" not in r.text.lower()
+                _EASY_APPLY_CACHE[url] = is_easy
+                return is_easy
+        except Exception:
+            pass
+
+        # Step 2: route through free public proxy (bypasses LinkedIn's AWS IP block on Streamlit Cloud)
+        proxy_url = f"https://api.allorigins.win/get?url={quote(api_url)}"
+        r2 = requests.get(proxy_url, timeout=12)
+        if r2.status_code == 200:
+            content = r2.json().get("contents", "")
+            if len(content) > 200:
+                is_easy = "apply-link-offsite" not in content.lower()
+                _EASY_APPLY_CACHE[url] = is_easy
+                return is_easy
     except Exception:
-        return False
+        pass
+    return False
 
 st.set_page_config(
     page_title="Job Tracker — Veena",
@@ -718,6 +740,16 @@ with main_tab:
                 bc3.info(f"**Apply:** {job['apply_type']}")
                 if job.get("salary"):           bc4.info(f"**Salary:** {job['salary']}")
                 if job.get("num_applicants"):   bc5.info(f"**Applicants:** {job['num_applicants']}")
+
+                # Manual Easy Apply toggle for LinkedIn jobs
+                if job.get("source") == "linkedin":
+                    is_currently_easy = job.get("apply_type") == "Easy Apply"
+                    flip_label = "🔄 Wrong? Mark as External Site" if is_currently_easy else "🔄 Wrong? Mark as Easy Apply"
+                    if st.button(flip_label, key=f"flip_{key_prefix}_{job['id']}"):
+                        from database import toggle_easy_apply_tag
+                        toggle_easy_apply_tag(job["id"], not is_currently_easy)
+                        _EASY_APPLY_CACHE.pop(job.get("url", ""), None)
+                        st.rerun()
 
                 st.markdown("---")
                 cur_status = job.get("status", "new")
