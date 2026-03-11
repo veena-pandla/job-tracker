@@ -615,7 +615,7 @@ with main_tab:
     jobs = [
         j for j in jobs
         if not any(w in (j.get("title", "") or "").lower() for w in _INTERN_WORDS)
-        and j.get("source") not in ("greenhouse", "lever", "remoteok")
+        and j.get("source") not in ("greenhouse", "lever", "remoteok", "yc", "wellfound")
     ]
 
     if not jobs:
@@ -1108,7 +1108,7 @@ with intern_tab:
     with icol1:
         intern_source = st.multiselect(
             "Source",
-            ["greenhouse", "lever", "linkedin", "indeed", "glassdoor", "zip_recruiter", "remoteok"],
+            ["greenhouse", "lever", "yc", "wellfound", "linkedin", "indeed", "glassdoor", "zip_recruiter", "remoteok"],
             default=[], key="intern_source"
         )
     with icol2:

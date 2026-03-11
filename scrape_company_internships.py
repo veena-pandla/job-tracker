@@ -4,14 +4,18 @@ Scrape internships directly from company career pages.
 Most real internships (Google, Meta, Anthropic, Databricks, OpenAI, etc.) are posted
 ONLY on the company's own site — not on LinkedIn or Indeed.
 
-This scraper uses two public, free APIs that 90% of tech companies use as their ATS:
+Sources:
   • Greenhouse  → https://boards-api.greenhouse.io/v1/boards/{slug}/jobs
   • Lever       → https://api.lever.co/v0/postings/{slug}?mode=json
+  • Y Combinator / Work at a Startup → https://www.workatastartup.com/jobs
+  • Wellfound (AngelList) → __NEXT_DATA__ SSR scrape
 
 No API key required. Returns JSON. Very reliable.
 
 Add/remove companies by editing GREENHOUSE_COMPANIES or LEVER_COMPANIES below.
 """
+import re
+import json
 import requests
 import time
 from datetime import datetime, timezone
@@ -271,11 +275,185 @@ def scrape_lever(companies: dict[str, str]) -> list[dict]:
     return jobs
 
 
+# ── Y Combinator / Work at a Startup ──────────────────────────────────────────
+
+def scrape_yc_intern() -> list[dict]:
+    """
+    Y Combinator's Work at a Startup job board.
+    Fetches the internship-filtered page and parses __NEXT_DATA__ (Next.js SSR).
+    """
+    jobs = []
+    try:
+        url = "https://www.workatastartup.com/jobs?query=intern&type=intern"
+        r = requests.get(url, headers=HEADERS, timeout=15)
+        if r.status_code != 200:
+            print(f"[YC/WorkAtAStartup] HTTP {r.status_code}")
+            return []
+
+        match = re.search(
+            r'<script id="__NEXT_DATA__" type="application/json">(.+?)</script>',
+            r.text, re.DOTALL
+        )
+        if not match:
+            print("[YC/WorkAtAStartup] Could not find __NEXT_DATA__ in page")
+            return []
+
+        page_data = json.loads(match.group(1))
+        props = page_data.get("props", {}).get("pageProps", {})
+        raw_jobs = (
+            props.get("jobs") or
+            props.get("listings") or
+            props.get("roles") or
+            []
+        )
+
+        count = 0
+        for item in raw_jobs:
+            if not isinstance(item, dict):
+                continue
+            title = item.get("title", "") or item.get("job_title", "") or ""
+            if not _is_intern_title(title):
+                continue
+
+            company_data = item.get("company", {}) or {}
+            company = company_data.get("name", "") if isinstance(company_data, dict) else str(company_data)
+
+            job_id = item.get("id", "") or item.get("slug", "")
+            job_url = item.get("url", "") or item.get("job_url", "") or ""
+            if not job_url and job_id:
+                job_url = f"https://www.workatastartup.com/jobs/{job_id}"
+            if not job_url or not job_url.startswith("http"):
+                continue
+
+            loc_list = item.get("locationNames", []) or item.get("locations", [])
+            location = loc_list[0] if loc_list else (item.get("remote") and "Remote" or "USA")
+
+            description = item.get("description", "") or ""
+            description = re.sub(r"<[^>]+>", " ", description).strip()[:3000]
+
+            date_posted = ""
+            created = item.get("created_at", "") or item.get("posted_at", "")
+            if created:
+                try:
+                    if isinstance(created, (int, float)):
+                        ts = int(created)
+                        dt = datetime.fromtimestamp(ts / 1000 if ts > 1e10 else ts, tz=timezone.utc)
+                    else:
+                        dt = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
+                    date_posted = dt.isoformat()
+                except Exception:
+                    date_posted = str(created)
+
+            jobs.append({
+                "title":          title,
+                "company":        company or "YC Startup",
+                "url":            job_url,
+                "location":       location,
+                "salary":         "",
+                "description":    description,
+                "tags":           ["internship", "yc", "workatastartup"],
+                "source":         "yc",
+                "date_posted":    date_posted,
+                "num_applicants": "",
+            })
+            count += 1
+
+        if count:
+            print(f"[YC/WorkAtAStartup] {count} intern postings")
+        else:
+            print("[YC/WorkAtAStartup] No intern postings found (API/page structure may have changed)")
+    except Exception as e:
+        print(f"[YC/WorkAtAStartup] Error: {e}")
+    return jobs
+
+
+# ── Wellfound (AngelList) ──────────────────────────────────────────────────────
+
+def scrape_wellfound_intern() -> list[dict]:
+    """
+    Wellfound (formerly AngelList) startup internships.
+    Parses __NEXT_DATA__ JSON embedded in the Next.js SSR page.
+    Falls back gracefully if the page structure changes.
+    """
+    jobs = []
+    try:
+        url = "https://wellfound.com/role/l/intern"
+        r = requests.get(url, headers=HEADERS, timeout=15)
+        if r.status_code != 200:
+            print(f"[Wellfound] HTTP {r.status_code}")
+            return []
+
+        match = re.search(
+            r'<script id="__NEXT_DATA__" type="application/json">(.+?)</script>',
+            r.text, re.DOTALL
+        )
+        if not match:
+            print("[Wellfound] Could not find __NEXT_DATA__ in page")
+            return []
+
+        page_data = json.loads(match.group(1))
+        props = page_data.get("props", {}).get("pageProps", {})
+        raw_jobs = (
+            props.get("roleListings") or
+            props.get("listings") or
+            props.get("roles") or
+            props.get("jobs") or
+            []
+        )
+
+        count = 0
+        for item in raw_jobs:
+            if not isinstance(item, dict):
+                continue
+
+            # Wellfound nests role info sometimes
+            role = item.get("role", item)
+            title = role.get("title", "") or item.get("title", "") or ""
+            if not _is_intern_title(title):
+                continue
+
+            company_data = item.get("company", role.get("startup", {})) or {}
+            company = company_data.get("name", "") if isinstance(company_data, dict) else str(company_data)
+
+            slug = role.get("slug", "") or item.get("slug", "") or role.get("id", "")
+            job_url = role.get("url", "") or item.get("url", "")
+            if not job_url and slug:
+                job_url = f"https://wellfound.com/jobs/{slug}"
+            if not job_url or not job_url.startswith("http"):
+                continue
+
+            loc_list = role.get("locationNames", []) or item.get("locationNames", [])
+            location = loc_list[0] if loc_list else "USA"
+
+            jobs.append({
+                "title":          title or "Intern",
+                "company":        company or "Wellfound Startup",
+                "url":            job_url,
+                "location":       location,
+                "salary":         "",
+                "description":    "",
+                "tags":           ["internship", "wellfound", "startup"],
+                "source":         "wellfound",
+                "date_posted":    "",
+                "num_applicants": "",
+            })
+            count += 1
+
+        if count:
+            print(f"[Wellfound] {count} intern postings")
+        else:
+            print("[Wellfound] No listings found (page may be JS-only or structure changed)")
+    except Exception as e:
+        print(f"[Wellfound] Error: {e}")
+    return jobs
+
+
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 def scrape_all_company_internships() -> list[dict]:
     """
-    Scrape internships from company career pages via Greenhouse + Lever APIs.
+    Scrape internships from company career pages via Greenhouse + Lever APIs,
+    plus Y Combinator (Work at a Startup) and Wellfound (AngelList).
     Returns a deduplicated list of job dicts compatible with insert_job().
     """
     all_jobs: list[dict] = []
@@ -285,6 +463,12 @@ def scrape_all_company_internships() -> list[dict]:
 
     print("\n── Lever (company career pages) ─────────────")
     all_jobs.extend(scrape_lever(LEVER_COMPANIES))
+
+    print("\n── Y Combinator / Work at a Startup ─────────")
+    all_jobs.extend(scrape_yc_intern())
+
+    print("\n── Wellfound (AngelList) ─────────────────────")
+    all_jobs.extend(scrape_wellfound_intern())
 
     # Deduplicate by URL
     seen: set[str] = set()
