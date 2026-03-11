@@ -191,7 +191,7 @@ def delete_old_jobs(hours: int = 8) -> int:
             cur.execute("""
                 DELETE FROM jobs
                 WHERE status NOT IN ('applied', 'interviewing', 'offer', 'reviewed')
-                AND source NOT IN ('greenhouse', 'lever', 'remoteok', 'yc', 'wellfound')
+                AND source NOT IN ('greenhouse', 'lever', 'remoteok', 'yc', 'wellfound', 'wayup')
                 AND date_found < %s
             """, (cutoff,))
             deleted = cur.rowcount
