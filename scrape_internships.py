@@ -15,7 +15,6 @@ import re
 import requests
 import feedparser
 import email.utils
-from datetime import datetime, timezone
 
 try:
     from jobspy import scrape_jobs
@@ -24,24 +23,45 @@ except ImportError:
 
 # Broader keyword list — mix of specific and general so we don't miss anything
 INTERN_KEYWORDS = [
-    # General (catches the most)
+    # General (highest volume)
     "intern",
-    "internship remote",
-    "summer intern 2025",
-    # Domain-specific
+    "internship",
+    "summer intern 2026",
+    "summer 2026 internship",
+    "fall 2026 internship",
+    # Software Engineering
+    "software engineer intern",
+    "software engineering intern",
+    "backend intern",
+    "frontend intern",
+    "full stack intern",
+    "web developer intern",
+    "iOS intern",
+    "Android intern",
+    "mobile engineer intern",
+    # AI / ML
     "machine learning intern",
     "AI intern",
-    "data science intern",
-    "software engineer intern",
-    "python intern",
-    "data engineer intern",
-    "ML research intern",
-    "backend intern",
-    "full stack intern",
-    "AI research intern",
     "deep learning intern",
     "computer vision intern",
     "NLP intern",
+    "ML research intern",
+    "AI research intern",
+    # Data
+    "data science intern",
+    "data engineer intern",
+    "data analyst intern",
+    "python intern",
+    "analytics intern",
+    # Research / Product / Other
+    "research intern",
+    "product management intern",
+    "product intern",
+    "devops intern",
+    "cloud intern",
+    "security intern",
+    "QA intern",
+    "site reliability intern",
 ]
 
 _INTERN_TITLE_WORDS = ("intern", "internship", "trainee", "co-op", "coop")
@@ -122,7 +142,7 @@ def scrape_indeed_rss_intern(keywords: list[str]) -> list[dict]:
                 loc_param = f"&l={location.replace(' ', '+')}" if location else ""
                 feed_url = (
                     f"https://rss.indeed.com/rss?q={encoded_q}"
-                    f"{loc_param}&sort=date&fromage=7&limit=25"
+                    f"{loc_param}&sort=date&fromage=30&limit=50"
                 )
                 feed = feedparser.parse(feed_url)
                 count = 0
@@ -196,8 +216,8 @@ def scrape_jobspy_intern(keywords: list[str]) -> list[dict]:
     all_jobs: list[dict] = []
     seen_urls: set[str] = set()
 
-    # Search two locations for more coverage
-    locations = ["Remote", "United States"]
+    # Multiple locations for broader coverage
+    locations = ["Remote", "United States", "San Francisco, CA", "New York, NY", "Seattle, WA"]
 
     for location in locations:
         for keyword in keywords:
@@ -207,8 +227,8 @@ def scrape_jobspy_intern(keywords: list[str]) -> list[dict]:
                     site_name=["linkedin", "indeed", "glassdoor", "zip_recruiter"],
                     search_term=keyword,
                     location=location,
-                    results_wanted=50,
-                    hours_old=168,          # 7 days
+                    results_wanted=100,
+                    hours_old=720,          # 30 days — intern posts stay up longer
                     country_indeed="USA",
                     verbose=0,
                 )
@@ -292,14 +312,19 @@ def scrape_all_intern_jobs(keywords: list[str] | None = None) -> list[dict]:
     all_jobs.extend(scrape_remoteok_intern())
 
     print("\n── Indeed RSS ────────────────────────────")
-    # Broader RSS keywords (simpler = more results)
+    # Broader RSS keywords (simpler = more results from Indeed)
     rss_keywords = [
         "intern",
+        "internship 2026",
+        "summer intern 2026",
+        "software engineer intern",
         "machine learning intern",
         "AI intern",
         "data science intern",
         "software intern",
-        "python intern",
+        "research intern",
+        "product intern",
+        "data analyst intern",
     ]
     all_jobs.extend(scrape_indeed_rss_intern(rss_keywords))
 
